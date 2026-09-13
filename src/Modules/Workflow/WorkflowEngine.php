@@ -96,7 +96,7 @@ final class WorkflowEngine
             if ((string) $task['status'] === 'open') {
                 $tasks = Table::name('tasks');
                 $pdo->prepare("UPDATE {$tasks} SET status='in_progress',started_by=?,started_at=NOW() WHERE id=?")->execute([$actorId, $taskId]);
-                $this->repository->history((int) $task['order_id'], $taskId, $actorId, 'task.started', 'انجام وظیفه شروع شد.');
+                $this->repository->history($this->projectId($task), $taskId, $actorId, 'task.started', 'انجام وظیفه شروع شد.');
             }
             $pdo->commit();
         } catch (\Throwable $exception) {
@@ -118,7 +118,7 @@ final class WorkflowEngine
         $statement = Connection::get()->prepare("INSERT INTO {$reports} (task_id,user_id,report_text) VALUES (?,?,?)");
         $statement->execute([$taskId, $actorId, $text]);
         $id = (int) Connection::get()->lastInsertId();
-        $this->repository->history((int) $task['order_id'], $taskId, $actorId, 'task.reported', 'گزارش کاری ثبت شد.', ['report_id' => $id]);
+        $this->repository->history($this->projectId($task), $taskId, $actorId, 'task.reported', 'گزارش کاری ثبت شد.', ['report_id' => $id]);
         return $id;
     }
 
@@ -139,15 +139,20 @@ final class WorkflowEngine
             if ($report !== null && trim($report) !== '') {
                 $reports = Table::name('task_reports');
                 $pdo->prepare("INSERT INTO {$reports} (task_id,user_id,report_text) VALUES (?,?,?)")->execute([$taskId, $actorId, trim($report)]);
-                $this->repository->history((int) $task['order_id'], $taskId, $actorId, 'task.reported', 'گزارش نهایی وظیفه ثبت شد.');
+                $this->repository->history($this->projectId($task), $taskId, $actorId, 'task.reported', 'گزارش نهایی وظیفه ثبت شد.');
             }
             $tasks = Table::name('tasks');
             $steps = Table::name('order_workflow_steps');
             $pdo->prepare("UPDATE {$tasks} SET status='completed',completed_by=?,completed_at=NOW() WHERE id=?")->execute([$actorId, $taskId]);
-            $pdo->prepare("UPDATE {$steps} SET status='completed',completed_at=NOW() WHERE id=?")->execute([(int) $task['order_step_id']]);
-            $this->repository->history((int) $task['order_id'], $taskId, $actorId, 'task.completed', 'وظیفه توسط یکی از مسئولان تکمیل شد.');
-            $this->activateReadySteps((int) $task['order_id'], $actorId);
-            $this->updateProgress((int) $task['order_id'], $actorId);
+            $projectId = $this->projectId($task);
+            if ($projectId !== null && $task['order_step_id'] !== null) {
+                $pdo->prepare("UPDATE {$steps} SET status='completed',completed_at=NOW() WHERE id=?")->execute([(int) $task['order_step_id']]);
+            }
+            $this->repository->history($projectId, $taskId, $actorId, 'task.completed', 'وظیفه توسط یکی از مسئولان تکمیل شد.');
+            if ($projectId !== null) {
+                $this->activateReadySteps($projectId, $actorId);
+                $this->updateProgress($projectId, $actorId);
+            }
             $pdo->commit();
         } catch (\Throwable $exception) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -171,7 +176,7 @@ final class WorkflowEngine
                 $insert->execute([$taskId, $userId, $actorId]);
                 $this->notify($userId, 'task.assigned', 'وظیفه به شما تخصیص یافت', (string) $task['title'], '/workspace#tasks');
             }
-            $this->repository->history((int) $task['order_id'], $taskId, $actorId, 'task.reassigned', 'مسئولان وظیفه تغییر کردند.', ['user_ids' => $userIds]);
+            $this->repository->history($this->projectId($task), $taskId, $actorId, 'task.reassigned', 'مسئولان وظیفه تغییر کردند.', ['user_ids' => $userIds]);
             $pdo->commit();
         } catch (\Throwable $exception) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -208,7 +213,14 @@ final class WorkflowEngine
             $this->replaceDependencies($orderId, $stepId, $data['dependency_ids'] ?? []);
             $candidateTable = Table::name('order_step_candidate_assignees');
             $candidateInsert = $pdo->prepare("INSERT IGNORE INTO {$candidateTable} (step_id,user_id) VALUES (?,?)");
-            foreach ($this->ids($data['user_ids'] ?? []) as $userId) $candidateInsert->execute([$stepId, $userId]);
+            $candidateIds = $this->ids($data['user_ids'] ?? []);
+            if ($candidateIds === [] && $order['project_id'] !== null) {
+                $projectMembers = Table::name('project_members');
+                $memberQuery = $pdo->prepare("SELECT user_id FROM {$projectMembers} WHERE project_id=?");
+                $memberQuery->execute([(int) $order['project_id']]);
+                $candidateIds = array_map('intval', $memberQuery->fetchAll(PDO::FETCH_COLUMN));
+            }
+            foreach ($candidateIds as $userId) $candidateInsert->execute([$stepId, $userId]);
             $this->repository->history($orderId, null, $actorId, 'step.added', 'مرحله جدید به گردش کار سفارش اضافه شد.', ['step_id' => $stepId, 'placement' => $placement, 'anchor_step_id' => $anchorId]);
             if ((string) $order['status'] === 'active') $this->activateReadySteps($orderId, $actorId);
             $this->updateProgress($orderId, $actorId);
@@ -297,7 +309,11 @@ final class WorkflowEngine
         $candidates = Table::name('order_step_candidate_assignees');
         $assignees = Table::name('task_assignees');
         $pdo->prepare("UPDATE {$steps} SET status='active',activated_at=NOW() WHERE id=? AND status='pending'")->execute([(int) $step['id']]);
-        $title = (string) $step['name'] . ' سفارش #' . (int) $step['order_id'];
+        $orders = Table::name('work_orders');
+        $projectQuery = $pdo->prepare("SELECT title FROM {$orders} WHERE id=?");
+        $projectQuery->execute([(int) $step['order_id']]);
+        $projectTitle = (string) ($projectQuery->fetchColumn() ?: ('#' . (int) $step['order_id']));
+        $title = (string) $step['name'] . ' — ' . $projectTitle;
         $pdo->prepare("INSERT IGNORE INTO {$tasks} (order_id,order_step_id,task_type_id,title,description) VALUES (?,?,?,?,?)")->execute([(int) $step['order_id'], (int) $step['id'], (int) $step['task_type_id'], $title, $step['description']]);
         $query = $pdo->prepare("SELECT id FROM {$tasks} WHERE order_step_id=?");
         $query->execute([(int) $step['id']]);
@@ -434,6 +450,12 @@ final class WorkflowEngine
     {
         $values = is_array($values) ? $values : (is_string($values) ? explode(',', $values) : []);
         return array_values(array_unique(array_filter(array_map('intval', $values), static fn (int $id): bool => $id > 0)));
+    }
+
+    private function projectId(array $task): ?int
+    {
+        $id = (int) ($task['order_id'] ?? 0);
+        return $id > 0 ? $id : null;
     }
 
     private function required(string $value, string $label): string

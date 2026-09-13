@@ -82,6 +82,14 @@ $test('workflow module contains the required domain schema', static function () 
     }
 });
 
+$test('workflow supports standalone tasks outside projects', static function () use ($assert): void {
+    $sql = file_get_contents(APP_ROOT . '/database/modules/workflow/002_standalone_tasks.sql');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $assert(is_string($sql) && str_contains($sql, 'is_standalone'));
+    $assert(str_contains($sql, 'MODIFY order_id BIGINT UNSIGNED DEFAULT NULL'));
+    $assert(is_string($repository) && str_contains($repository, 'createStandaloneTask'));
+});
+
 $test('workflow engine implements automatic dependency progression', static function () use ($assert): void {
     $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowEngine.php');
     $assert(is_string($source));
@@ -93,9 +101,11 @@ $test('workflow engine implements automatic dependency progression', static func
 $test('workflow API exposes project task and administration endpoints', static function () use ($assert): void {
     $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
     $assert(is_string($source));
-    foreach (['/orders', '/tasks/{id}/complete', '/templates/{id}/steps', '/teams/{id}/members', '/users', '/notifications'] as $route) {
+    foreach (['/projects', '/projects/{id}/activate', '/tasks', '/tasks/{id}/complete', '/templates/{id}/steps', '/teams/{id}/members', '/users', '/notifications'] as $route) {
         $assert(str_contains($source, $route), 'Missing API route: ' . $route);
     }
+    $assert(str_contains($source, 'createWorkflowProject'));
+    $assert(str_contains($source, 'createStandaloneTask'));
 });
 
 $failures = 0;

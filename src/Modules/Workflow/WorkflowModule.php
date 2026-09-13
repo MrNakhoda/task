@@ -71,11 +71,23 @@ final class WorkflowModule implements Module
             'priority_id' => $request->query('priority_id', ''),
             'customer' => $request->query('customer', ''),
             'weight' => $request->query('weight', ''),
+            'search' => $request->query('search', ''),
         ])]), [$authenticated]);
         $router->get('/api/v1/workflow/orders/{id}', $endpoint(static function (Request $request, array $params) use ($repository): array {
             $order = $repository->order((int) ($params['id'] ?? 0));
             if ($order === null) throw new RuntimeException('سفارش پیدا نشد.');
             return ['order' => $order];
+        }), [$authenticated]);
+        $router->get('/api/v1/workflow/projects', $endpoint(static fn (Request $request) => ['projects' => $repository->projects([
+            'status' => $request->query('status', ''),
+            'priority_id' => $request->query('priority_id', ''),
+            'customer' => $request->query('customer', ''),
+            'search' => $request->query('search', ''),
+        ])]), [$authenticated]);
+        $router->get('/api/v1/workflow/projects/{id}', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $project = $repository->order((int) ($params['id'] ?? 0));
+            if ($project === null) throw new RuntimeException('پروژه پیدا نشد.');
+            return ['project' => $project];
         }), [$authenticated]);
         $router->get('/api/v1/workflow/tasks', $endpoint(static fn (Request $request) => ['tasks' => $repository->tasks($actor(), $mayManageTasks($actor()), [
             'status' => $request->query('status', ''),
@@ -117,7 +129,13 @@ final class WorkflowModule implements Module
             $engine->reorderSteps((int) ($params['id'] ?? 0), $actor(), (array) $request->input('step_ids', []));
             return [];
         }), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/projects/{id}/activate', $endpoint(static function (Request $request, array $params) use ($engine, $actor): array {
+            $engine->activateOrder((int) ($params['id'] ?? 0), $actor());
+            return [];
+        }), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/projects/{id}/stages', $endpoint(static fn (Request $request, array $params) => ['id' => $engine->addOrderStep((int) ($params['id'] ?? 0), $actor(), $request->all())], 201), [$authenticated, $csrf, $permission('orders.manage')]);
 
+        $router->post('/api/v1/workflow/tasks', $endpoint(static fn (Request $request) => ['id' => $repository->createStandaloneTask($request->all(), $actor())], 201), [$authenticated, $csrf, $permission('tasks.manage')]);
         $router->post('/api/v1/workflow/tasks/{id}/start', $endpoint(static function (Request $request, array $params) use ($engine, $actor, $mayManageTasks): array {
             $userId = $actor();
             $engine->startTask((int) ($params['id'] ?? 0), $userId, $mayManageTasks($userId));
@@ -146,11 +164,11 @@ final class WorkflowModule implements Module
             $repository->addTeamMember((int) ($params['id'] ?? 0), (int) $request->input('user_id', 0), (bool) $request->input('is_lead', false));
             return [];
         }), [$authenticated, $csrf, $permission('teams.manage')]);
-        $router->post('/api/v1/workflow/projects', $endpoint(static fn (Request $request) => ['id' => $repository->createProject((string) $request->input('name', ''), $request->input('code'), $request->input('description'), $actor())], 201), [$authenticated, $csrf, $permission('teams.manage')]);
-        $router->post('/api/v1/workflow/projects/{id}/members', $endpoint(static function (Request $request, array $params) use ($repository): array {
-            $repository->addProjectMember((int) ($params['id'] ?? 0), (int) $request->input('user_id', 0), $request->input('role_label'));
+        $router->post('/api/v1/workflow/projects', $endpoint(static fn (Request $request) => ['id' => $repository->createWorkflowProject($request->all(), $actor())], 201), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/projects/{id}/members', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->addWorkflowProjectMember((int) ($params['id'] ?? 0), (int) $request->input('user_id', 0), $request->input('role_label'), $actor());
             return [];
-        }), [$authenticated, $csrf, $permission('teams.manage')]);
+        }), [$authenticated, $csrf, $permission('orders.manage')]);
         $router->post('/api/v1/workflow/users', $endpoint(static fn (Request $request) => ['id' => $repository->createUser((string) $request->input('name', ''), (string) $request->input('email', ''), (string) $request->input('password', ''), (string) $request->input('role_key', 'user'))], 201), [$authenticated, $csrf, $permission('users.manage')]);
         $router->post('/api/v1/workflow/roles', $endpoint(static fn (Request $request) => ['id' => $repository->createRole((string) $request->input('key_name', ''), (string) $request->input('display_name', ''), (array) $request->input('permissions', []))], 201), [$authenticated, $csrf, $permission('users.manage')]);
         $router->post('/api/v1/workflow/users/{id}/roles', $endpoint(static function (Request $request, array $params) use ($repository): array {
