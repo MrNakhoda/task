@@ -414,6 +414,90 @@ final class WorkflowRepository
         $this->history($workflowProjectId, null, $actorId, 'project.member_added', 'عضو جدید به پروژه اضافه شد.', ['user_id' => $userId]);
     }
 
+    public function deleteWorkflowProject(int $workflowProjectId): void
+    {
+        $orders = Table::name('work_orders');
+        $projects = Table::name('projects');
+        $attachments = Table::name('order_attachments');
+        $files = Table::name('files');
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $query = $pdo->prepare("SELECT project_id FROM {$orders} WHERE id=? AND deleted_at IS NULL FOR UPDATE");
+            $query->execute([$workflowProjectId]);
+            $containerId = (int) ($query->fetchColumn() ?: 0);
+            if ($containerId < 1) throw new RuntimeException('پروژه پیدا نشد.');
+
+            $query = $pdo->prepare("SELECT file_id FROM {$attachments} WHERE order_id=?");
+            $query->execute([$workflowProjectId]);
+            $fileIds = array_map('intval', $query->fetchAll(PDO::FETCH_COLUMN));
+
+            $pdo->prepare("DELETE FROM {$orders} WHERE id=?")->execute([$workflowProjectId]);
+            $pdo->prepare("DELETE FROM {$projects} WHERE id=?")->execute([$containerId]);
+            if ($fileIds !== []) {
+                $placeholders = implode(',', array_fill(0, count($fileIds), '?'));
+                $pdo->prepare("DELETE FROM {$files} WHERE id IN ({$placeholders})")->execute($fileIds);
+            }
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function deleteWorkflowTemplate(int $templateId): void
+    {
+        $templates = Table::name('workflow_templates');
+        $orders = Table::name('work_orders');
+        $pdo = Connection::get();
+        $query = $pdo->prepare("SELECT name FROM {$templates} WHERE id=? AND deleted_at IS NULL");
+        $query->execute([$templateId]);
+        if ($query->fetchColumn() === false) throw new RuntimeException('قالب گردش‌کار پیدا نشد.');
+        $query = $pdo->prepare("SELECT COUNT(*) FROM {$orders} WHERE workflow_template_id=?");
+        $query->execute([$templateId]);
+        if ((int) $query->fetchColumn() > 0) {
+            throw new RuntimeException('این قالب در پروژه‌ها استفاده شده است؛ ابتدا پروژه‌های مرتبط را حذف کنید.');
+        }
+        $pdo->prepare("DELETE FROM {$templates} WHERE id=?")->execute([$templateId]);
+    }
+
+    public function wipeTestData(): void
+    {
+        $tables = [
+            'notifications' => Table::name('user_notifications'),
+            'history' => Table::name('workflow_activity_logs'),
+            'tasks' => Table::name('tasks'),
+            'orders' => Table::name('work_orders'),
+            'projects' => Table::name('projects'),
+            'templates' => Table::name('workflow_templates'),
+            'teams' => Table::name('teams'),
+            'customers' => Table::name('customers'),
+            'attachments' => Table::name('order_attachments'),
+            'files' => Table::name('files'),
+        ];
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $fileIds = array_map('intval', $pdo->query("SELECT file_id FROM {$tables['attachments']}")->fetchAll(PDO::FETCH_COLUMN));
+            $pdo->exec("DELETE FROM {$tables['notifications']}");
+            $pdo->exec("DELETE FROM {$tables['history']}");
+            $pdo->exec("DELETE FROM {$tables['tasks']}");
+            $pdo->exec("DELETE FROM {$tables['orders']}");
+            $pdo->exec("DELETE FROM {$tables['projects']}");
+            $pdo->exec("DELETE FROM {$tables['templates']}");
+            $pdo->exec("DELETE FROM {$tables['teams']}");
+            $pdo->exec("DELETE FROM {$tables['customers']}");
+            if ($fileIds !== []) {
+                $placeholders = implode(',', array_fill(0, count($fileIds), '?'));
+                $pdo->prepare("DELETE FROM {$tables['files']} WHERE id IN ({$placeholders})")->execute($fileIds);
+            }
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
     public function createCustomer(string $name, ?string $phone, ?string $email, ?string $notes): int
     {
         if ($email !== null && $email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('ایمیل مشتری معتبر نیست.');

@@ -66,6 +66,7 @@ $pageScript = $to('/assets/workflow.js');
         <section class="tf-view" data-view="users">
             <div class="tf-page-head"><div><span>Access</span><h1>کاربران و نقش‌ها</h1><p>ساخت حساب، تعیین مدیر و کنترل سطح دسترسی.</p></div><div class="tf-head-actions"><button class="tf-button secondary" data-open-role>+ نقش جدید</button><button class="tf-button" data-open-user>+ حساب جدید</button></div></div>
             <div class="tf-split"><section class="tf-card"><div class="tf-card-head"><div><h2>کاربران</h2><p>حساب‌های فعال سیستم</p></div></div><div class="tf-user-list" data-user-list></div></section><section class="tf-card"><div class="tf-card-head"><div><h2>نقش‌های دسترسی</h2><p>ادمین دسترسی کامل دارد.</p></div></div><div class="tf-entity-list" data-role-list></div></section></div>
+            <section class="tf-danger-zone" data-admin-only hidden><div><strong>پاک‌سازی داده‌های تست</strong><p>تمام پروژه‌ها، تسک‌ها، قالب‌های گردش‌کار، تیم‌ها، مشتری‌ها و اعلان‌ها حذف می‌شوند. کاربران، نقش‌ها، دسترسی‌ها، نوع وظیفه‌ها و اولویت‌ها باقی می‌مانند.</p></div><button class="tf-button danger" type="button" data-wipe-workspace>پاک‌سازی کامل</button></section>
         </section>
 
         <section class="tf-view" data-view="notifications">
