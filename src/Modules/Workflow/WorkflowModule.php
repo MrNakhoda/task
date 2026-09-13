@@ -62,9 +62,21 @@ final class WorkflowModule implements Module
         $mayManageTasks = static function (int $userId) use ($authorization): bool {
             return $authorization->allows($userId, 'tasks.manage') || $authorization->allows($userId, 'workflow.admin') || $authorization->allows($userId, 'system.admin');
         };
+        $isSystemAdmin = static function (int $userId) use ($authorization): bool {
+            return $authorization->allows($userId, 'system.admin');
+        };
+        $systemAdmin = static function (Request $request, callable $next) use ($auth, $isSystemAdmin): Response {
+            $user = $auth->user();
+            return $user !== null && $isSystemAdmin((int) $user['id'])
+                ? $next($request)
+                : Response::json(['ok' => false, 'error' => 'این عملیات فقط برای ادمین اصلی مجاز است.'], 403);
+        };
 
         $router->get('/api/v1/workflow/overview', $endpoint(static fn () => ['overview' => $repository->overview($actor(), $mayManageTasks($actor()))]), [$authenticated]);
-        $router->get('/api/v1/workflow/reference', $endpoint(static fn () => ['reference' => $repository->referenceData()]), [$authenticated]);
+        $router->get('/api/v1/workflow/reference', $endpoint(static fn () => [
+            'reference' => $repository->referenceData(),
+            'capabilities' => ['system_admin' => $isSystemAdmin($actor())],
+        ]), [$authenticated]);
         $router->get('/api/v1/workflow/templates', $endpoint(static fn () => ['templates' => $repository->templates()]), [$authenticated]);
         $router->get('/api/v1/workflow/orders', $endpoint(static fn (Request $request) => ['orders' => $repository->orders([
             'status' => $request->query('status', ''),
@@ -169,6 +181,21 @@ final class WorkflowModule implements Module
             $repository->addWorkflowProjectMember((int) ($params['id'] ?? 0), (int) $request->input('user_id', 0), $request->input('role_label'), $actor());
             return [];
         }), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/projects/{id}/delete', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $repository->deleteWorkflowProject((int) ($params['id'] ?? 0));
+            return [];
+        }), [$authenticated, $csrf, $systemAdmin]);
+        $router->post('/api/v1/workflow/templates/{id}/delete', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $repository->deleteWorkflowTemplate((int) ($params['id'] ?? 0));
+            return [];
+        }), [$authenticated, $csrf, $systemAdmin]);
+        $router->post('/api/v1/workflow/admin/wipe', $endpoint(static function (Request $request) use ($repository): array {
+            if ((string) $request->input('confirmation', '') !== 'WIPE') {
+                throw new RuntimeException('عبارت تأیید WIPE صحیح نیست.');
+            }
+            $repository->wipeTestData();
+            return [];
+        }), [$authenticated, $csrf, $systemAdmin]);
         $router->post('/api/v1/workflow/users', $endpoint(static fn (Request $request) => ['id' => $repository->createUser((string) $request->input('name', ''), (string) $request->input('email', ''), (string) $request->input('password', ''), (string) $request->input('role_key', 'user'))], 201), [$authenticated, $csrf, $permission('users.manage')]);
         $router->post('/api/v1/workflow/roles', $endpoint(static fn (Request $request) => ['id' => $repository->createRole((string) $request->input('key_name', ''), (string) $request->input('display_name', ''), (array) $request->input('permissions', []))], 201), [$authenticated, $csrf, $permission('users.manage')]);
         $router->post('/api/v1/workflow/users/{id}/roles', $endpoint(static function (Request $request, array $params) use ($repository): array {

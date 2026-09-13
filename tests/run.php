@@ -101,11 +101,23 @@ $test('workflow engine implements automatic dependency progression', static func
 $test('workflow API exposes project task and administration endpoints', static function () use ($assert): void {
     $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
     $assert(is_string($source));
-    foreach (['/projects', '/projects/{id}/activate', '/tasks', '/tasks/{id}/complete', '/templates/{id}/steps', '/teams/{id}/members', '/users', '/notifications'] as $route) {
+    foreach (['/projects', '/projects/{id}/activate', '/projects/{id}/delete', '/tasks', '/tasks/{id}/complete', '/templates/{id}/steps', '/templates/{id}/delete', '/admin/wipe', '/teams/{id}/members', '/users', '/notifications'] as $route) {
         $assert(str_contains($source, $route), 'Missing API route: ' . $route);
     }
     $assert(str_contains($source, 'createWorkflowProject'));
     $assert(str_contains($source, 'createStandaloneTask'));
+    $assert(str_contains($source, '$systemAdmin'));
+});
+
+$test('admin wipe preserves accounts and access control', static function () use ($assert): void {
+    $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $assert(is_string($source) && str_contains($source, 'wipeTestData'));
+    $start = strpos($source, 'public function wipeTestData');
+    $end = strpos($source, 'public function createCustomer', $start);
+    $wipe = substr($source, $start, $end - $start);
+    $assert(!str_contains($wipe, "Table::name('users')"));
+    $assert(!str_contains($wipe, "Table::name('roles')"));
+    $assert(!str_contains($wipe, "Table::name('permissions')"));
 });
 
 $failures = 0;
