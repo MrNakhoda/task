@@ -130,6 +130,8 @@ $test('admin wipe preserves accounts and access control', static function () use
     $start = strpos($source, 'public function wipeTestData');
     $end = strpos($source, 'public function createCustomer', $start);
     $wipe = substr($source, $start, $end - $start);
+    $assert(str_contains($wipe, "Table::name('task_types')"));
+    $assert(str_contains($wipe, "DELETE FROM {\$tables['task_types']}"));
     $assert(!str_contains($wipe, "Table::name('users')"));
     $assert(!str_contains($wipe, "Table::name('roles')"));
     $assert(!str_contains($wipe, "Table::name('permissions')"));

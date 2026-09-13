@@ -662,6 +662,7 @@ final class WorkflowRepository
             'orders' => Table::name('work_orders'),
             'projects' => Table::name('projects'),
             'templates' => Table::name('workflow_templates'),
+            'task_types' => Table::name('task_types'),
             'teams' => Table::name('teams'),
             'customers' => Table::name('customers'),
             'attachments' => Table::name('order_attachments'),
@@ -677,6 +678,7 @@ final class WorkflowRepository
             $pdo->exec("DELETE FROM {$tables['orders']}");
             $pdo->exec("DELETE FROM {$tables['projects']}");
             $pdo->exec("DELETE FROM {$tables['templates']}");
+            $pdo->exec("DELETE FROM {$tables['task_types']}");
             $pdo->exec("DELETE FROM {$tables['teams']}");
             $pdo->exec("DELETE FROM {$tables['customers']}");
             if ($fileIds !== []) {

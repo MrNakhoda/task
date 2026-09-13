@@ -83,7 +83,7 @@ $pageScript = $to('/assets/workflow.js');
         <section class="tf-view" data-view="users">
             <div class="tf-page-head"><div><span>افراد و دسترسی</span><h1>کاربران و نقش‌ها</h1><p>برای هر عضو شرکت حساب بساز و نقش او را مشخص کن.</p></div><div class="tf-head-actions"><button class="tf-button secondary" data-open-role data-requires="users_manage" hidden>+ نقش جدید</button><button class="tf-button" data-open-user data-requires="users_manage" hidden>+ حساب جدید</button></div></div>
             <div class="tf-split"><section class="tf-card"><div class="tf-card-head"><div><h2>کاربران</h2><p>نقش هر کاربر از همین لیست قابل تغییر است</p></div></div><div class="tf-user-list" data-user-list></div></section><section class="tf-card"><div class="tf-card-head"><div><h2>نقش‌های دسترسی</h2><p>ادمین کامل، مدیر پروژه یا کاربر اجرایی</p></div></div><div class="tf-entity-list" data-role-list></div></section></div>
-            <section class="tf-danger-zone" data-admin-only hidden><div><strong>پاک‌سازی داده‌های تست</strong><p>پروژه‌ها، تسک‌ها، قالب‌ها، تیم‌ها، مشتری‌ها و اعلان‌ها پاک می‌شوند؛ کاربران و دسترسی‌ها باقی می‌مانند.</p></div><button class="tf-button danger" type="button" data-wipe-workspace>پاک‌سازی کامل</button></section>
+            <section class="tf-danger-zone" data-admin-only hidden><div><strong>پاک‌سازی داده‌های تست</strong><p>پروژه‌ها، تسک‌ها، قالب‌ها، انواع وظیفه، تیم‌ها، مشتری‌ها و اعلان‌ها پاک می‌شوند؛ کاربران، نقش‌ها، دسترسی‌ها و اولویت‌های پایه باقی می‌مانند.</p></div><button class="tf-button danger" type="button" data-wipe-workspace>پاک‌سازی کامل</button></section>
         </section>
 
         <section class="tf-view" data-view="guide">
