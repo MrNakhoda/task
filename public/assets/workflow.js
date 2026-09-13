@@ -414,18 +414,81 @@
             if (action.matches('[data-refresh]')) await refreshAll();
             else if (action.matches('[data-read-notifications]')) { await api('notifications/read', { method: 'POST' }); await Promise.all([loadNotifications(), loadOverview()]); }
             else if (action.dataset.taskStart) { await api(`tasks/${action.dataset.taskStart}/start`, { method: 'POST' }); await Promise.all([loadTasks(), loadOverview()]); if (action.closest('dialog')) await showTask(action.dataset.taskStart); }
-            else if (action.dataset.taskReport) { const report = prompt('گزارش انجام کار را بنویس:'); if (!report) return; await api(`tasks/${action.dataset.taskReport}/reports`, { method: 'POST', body: { report_text: report } }); await showTask(action.dataset.taskReport); }
-            else if (action.dataset.taskComplete) { const report = prompt('گزارش نهایی؛ اختیاری:') || ''; await api(`tasks/${action.dataset.taskComplete}/complete`, { method: 'POST', body: { report_text: report } }); await Promise.all([loadTasks(), loadProjects(), loadOverview(), loadNotifications()]); if (action.closest('dialog')) await showTask(action.dataset.taskComplete); }
-            else if (action.dataset.deleteTask) { if (!confirm('این تسک مستقل و تمام گزارش‌هایش حذف شود؟')) return; await api(`tasks/${action.dataset.deleteTask}/delete`, { method: 'POST' }); closeModal(action); await Promise.all([loadTasks(), loadOverview(), loadNotifications()]); }
-            else if (action.dataset.projectActivate) { if (!confirm('پروژه شروع شود و تسک مراحل آماده ساخته شوند؟')) return; await api(`projects/${action.dataset.projectActivate}/activate`, { method: 'POST' }); await Promise.all([loadProjects(), loadTasks(), loadOverview(), loadNotifications()]); await showProject(action.dataset.projectActivate); }
-            else if (action.dataset.removeProjectMember) { if (!confirm('این عضو از پروژه حذف شود؟')) return; await api(`projects/${state.selectedProject.id}/members/remove`, { method: 'POST', body: { user_id: Number(action.dataset.removeProjectMember) } }); await Promise.all([loadProjects(), loadReference()]); await showProject(state.selectedProject.id); }
-            else if (action.dataset.disableProjectStage) { if (!confirm('این مرحله غیرفعال شود؟ سابقه آن باقی می‌ماند.')) return; await api(`order-steps/${action.dataset.disableProjectStage}/disable`, { method: 'POST' }); await Promise.all([loadProjects(), loadTasks(), loadOverview()]); await showProject(state.selectedProject.id); }
-            else if (action.dataset.disableTemplateStage) { if (!confirm('این مرحله از پروژه‌های آینده غیرفعال شود؟')) return; await api(`template-steps/${action.dataset.disableTemplateStage}/disable`, { method: 'POST' }); await loadTemplates(); }
-            else if (action.dataset.deleteProject) { if (!confirm('این پروژه همراه تمام مراحل، تسک‌ها، گزارش‌ها و تاریخچه حذف شود؟')) return; await api(`projects/${action.dataset.deleteProject}/delete`, { method: 'POST' }); state.selectedProject = null; await Promise.all([loadProjects(), loadTasks(), loadOverview(), loadNotifications()]); go('projects'); }
-            else if (action.dataset.deleteTemplate) { if (!confirm('این قالب و تمام مراحلش حذف شود؟')) return; await api(`templates/${action.dataset.deleteTemplate}/delete`, { method: 'POST' }); state.selectedTemplate = null; root.querySelector('[data-template-editor]').innerHTML = '<div class="tf-empty"><strong>یک قالب را انتخاب کن</strong></div>'; await Promise.all([loadTemplates(), loadReference()]); }
-            else if (action.dataset.deleteTaskType) { if (!confirm('این نوع وظیفه حذف شود؟')) return; await api(`task-types/${action.dataset.deleteTaskType}/delete`, { method: 'POST' }); await loadReference(); }
-            else if (action.dataset.deleteCustomer) { if (!confirm('این مشتری حذف شود؟')) return; await api(`customers/${action.dataset.deleteCustomer}/delete`, { method: 'POST' }); await loadReference(); }
-            else if (action.matches('[data-wipe-workspace]')) { if (!confirm('پروژه‌ها، تسک‌ها، قالب‌ها، انواع وظیفه، تیم‌ها، مشتری‌ها و اعلان‌ها پاک شوند؟ کاربران و دسترسی‌ها باقی می‌مانند.')) return; const confirmation = prompt('برای تأیید نهایی عبارت WIPE را وارد کن:'); if (confirmation !== 'WIPE') return; await api('admin/wipe', { method: 'POST', body: { confirmation } }); state.selectedProject = null; state.selectedTemplate = null; await refreshAll(); go('dashboard'); }
+            else if (action.dataset.taskReport) {
+                const report = await window.AppModal.prompt('گزارش انجام‌شده برای این وظیفه در تاریخچه ذخیره می‌شود.', { title: 'ثبت گزارش کار', inputLabel: 'متن گزارش', placeholder: 'چه کاری انجام شد؟', required: true, confirmText: 'ثبت گزارش', icon: '✎' });
+                if (report === null) return;
+                await api(`tasks/${action.dataset.taskReport}/reports`, { method: 'POST', body: { report_text: report } });
+                await showTask(action.dataset.taskReport);
+            }
+            else if (action.dataset.taskComplete) {
+                const report = await window.AppModal.prompt('در صورت نیاز گزارش نهایی را بنویس؛ ثبت گزارش برای تکمیل تسک اختیاری است.', { title: 'تکمیل وظیفه', inputLabel: 'گزارش نهایی (اختیاری)', placeholder: 'خلاصه نتیجه کار…', confirmText: 'تکمیل تسک', icon: '✓' });
+                if (report === null) return;
+                await api(`tasks/${action.dataset.taskComplete}/complete`, { method: 'POST', body: { report_text: report } });
+                await Promise.all([loadTasks(), loadProjects(), loadOverview(), loadNotifications()]);
+                if (action.closest('dialog')) await showTask(action.dataset.taskComplete);
+            }
+            else if (action.dataset.deleteTask) {
+                if (!await window.AppModal.confirm('این تسک مستقل همراه تمام گزارش‌های آن برای همیشه حذف می‌شود.', { title: 'حذف تسک مستقل', confirmText: 'حذف تسک', tone: 'danger' })) return;
+                await api(`tasks/${action.dataset.deleteTask}/delete`, { method: 'POST' });
+                closeModal(action);
+                await Promise.all([loadTasks(), loadOverview(), loadNotifications()]);
+            }
+            else if (action.dataset.projectActivate) {
+                if (!await window.AppModal.confirm('مراحل قالب روی پروژه ساخته می‌شوند و وظایف آماده به مسئولان تخصیص پیدا می‌کنند.', { title: 'شروع پروژه', confirmText: 'شروع و ساخت تسک‌ها', icon: '▶' })) return;
+                await api(`projects/${action.dataset.projectActivate}/activate`, { method: 'POST' });
+                await Promise.all([loadProjects(), loadTasks(), loadOverview(), loadNotifications()]);
+                await showProject(action.dataset.projectActivate);
+            }
+            else if (action.dataset.removeProjectMember) {
+                if (!await window.AppModal.confirm('اگر این عضو تسک بازی داشته باشد، ابتدا باید مسئول آن تسک را تغییر بدهی.', { title: 'حذف عضو از پروژه', confirmText: 'حذف عضو', tone: 'danger' })) return;
+                await api(`projects/${state.selectedProject.id}/members/remove`, { method: 'POST', body: { user_id: Number(action.dataset.removeProjectMember) } });
+                await Promise.all([loadProjects(), loadReference()]);
+                await showProject(state.selectedProject.id);
+            }
+            else if (action.dataset.disableProjectStage) {
+                if (!await window.AppModal.confirm('مرحله غیرفعال و تسک باز آن لغو می‌شود؛ تاریخچه مرحله باقی می‌ماند.', { title: 'غیرفعال‌کردن مرحله پروژه', confirmText: 'غیرفعال شود', tone: 'danger' })) return;
+                await api(`order-steps/${action.dataset.disableProjectStage}/disable`, { method: 'POST' });
+                await Promise.all([loadProjects(), loadTasks(), loadOverview()]);
+                await showProject(state.selectedProject.id);
+            }
+            else if (action.dataset.disableTemplateStage) {
+                if (!await window.AppModal.confirm('این مرحله فقط برای پروژه‌های آینده غیرفعال می‌شود و پروژه‌های قبلی تغییر نمی‌کنند.', { title: 'غیرفعال‌کردن مرحله قالب', confirmText: 'غیرفعال شود', tone: 'danger' })) return;
+                await api(`template-steps/${action.dataset.disableTemplateStage}/disable`, { method: 'POST' });
+                await loadTemplates();
+            }
+            else if (action.dataset.deleteProject) {
+                if (!await window.AppModal.confirm('پروژه همراه تمام مراحل، تسک‌ها، گزارش‌ها، پیوست‌ها و تاریخچه آن برای همیشه حذف می‌شود.', { title: 'حذف کامل پروژه', confirmText: 'حذف پروژه', tone: 'danger' })) return;
+                await api(`projects/${action.dataset.deleteProject}/delete`, { method: 'POST' });
+                state.selectedProject = null;
+                await Promise.all([loadProjects(), loadTasks(), loadOverview(), loadNotifications()]);
+                go('projects');
+            }
+            else if (action.dataset.deleteTemplate) {
+                if (!await window.AppModal.confirm('قالب و تمام مراحل آن حذف می‌شوند. قالب استفاده‌شده تا وقتی پروژه وابسته دارد قابل حذف نیست.', { title: 'حذف قالب گردش‌کار', confirmText: 'حذف قالب', tone: 'danger' })) return;
+                await api(`templates/${action.dataset.deleteTemplate}/delete`, { method: 'POST' });
+                state.selectedTemplate = null;
+                root.querySelector('[data-template-editor]').innerHTML = '<div class="tf-empty"><strong>یک قالب را انتخاب کن</strong></div>';
+                await Promise.all([loadTemplates(), loadReference()]);
+            }
+            else if (action.dataset.deleteTaskType) {
+                if (!await window.AppModal.confirm('نوع وظیفه فقط زمانی حذف می‌شود که در هیچ قالب، مرحله یا تسکی استفاده نشده باشد.', { title: 'حذف نوع وظیفه', confirmText: 'حذف نوع وظیفه', tone: 'danger' })) return;
+                await api(`task-types/${action.dataset.deleteTaskType}/delete`, { method: 'POST' });
+                await loadReference();
+            }
+            else if (action.dataset.deleteCustomer) {
+                if (!await window.AppModal.confirm('مشتری فقط در صورتی حذف می‌شود که پروژه وابسته‌ای نداشته باشد.', { title: 'حذف مشتری', confirmText: 'حذف مشتری', tone: 'danger' })) return;
+                await api(`customers/${action.dataset.deleteCustomer}/delete`, { method: 'POST' });
+                await loadReference();
+            }
+            else if (action.matches('[data-wipe-workspace]')) {
+                const confirmation = await window.AppModal.prompt('پروژه‌ها، تسک‌ها، قالب‌ها، انواع وظیفه، تیم‌ها، مشتری‌ها و اعلان‌ها پاک می‌شوند. کاربران و دسترسی‌ها باقی می‌مانند.', { title: 'پاک‌سازی کامل داده‌های تست', inputLabel: 'برای تأیید عبارت WIPE را وارد کن', placeholder: 'WIPE', required: true, expectedValue: 'WIPE', invalidText: 'عبارت تأیید باید دقیقاً WIPE باشد.', multiline: false, confirmText: 'پاک‌سازی کامل', tone: 'danger' });
+                if (confirmation === null) return;
+                await api('admin/wipe', { method: 'POST', body: { confirmation } });
+                state.selectedProject = null;
+                state.selectedTemplate = null;
+                await refreshAll();
+                go('dashboard');
+            }
             toast('عملیات با موفقیت انجام شد.');
         } catch (error) { toast(error.message, 'error'); }
         finally { action.disabled = false; }

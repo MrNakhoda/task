@@ -48,6 +48,28 @@ $currentUser = isset($user) && is_array($user) ? $user : null;
 
 <main><?= $content ?></main>
 
+<dialog class="app-dialog" data-app-dialog aria-labelledby="app-dialog-title">
+    <form class="app-dialog-card" data-app-dialog-form novalidate>
+        <header>
+            <span class="app-dialog-icon" data-app-dialog-icon aria-hidden="true">?</span>
+            <div>
+                <h2 id="app-dialog-title" data-app-dialog-title>تأیید عملیات</h2>
+                <p data-app-dialog-message></p>
+            </div>
+            <button class="app-dialog-close" type="button" data-app-dialog-cancel aria-label="بستن">×</button>
+        </header>
+        <label class="app-dialog-field" data-app-dialog-field hidden>
+            <span data-app-dialog-label></span>
+            <textarea data-app-dialog-input rows="4"></textarea>
+            <small data-app-dialog-help hidden></small>
+        </label>
+        <footer>
+            <button class="btn btn-ghost" type="button" data-app-dialog-cancel>انصراف</button>
+            <button class="btn" type="submit" data-app-dialog-submit>تأیید</button>
+        </footer>
+    </form>
+</dialog>
+
 <footer class="footer">
     <div class="container footer-inner">
         <span><?= htmlspecialchars($appName, ENT_QUOTES, 'UTF-8') ?></span>

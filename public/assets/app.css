@@ -123,6 +123,24 @@ code, pre { direction: ltr; text-align: left; font-family: Consolas, Monaco, mon
 .alert-error { border-color: #fecaca; background: #fff1f2; color: var(--danger); }
 .alert-success { border-color: #a7f3d0; background: #ecfdf5; color: var(--success); }
 
+.app-dialog { width: min(480px, calc(100% - 28px)); max-height: calc(100vh - 32px); padding: 0; overflow: hidden; border: 0; border-radius: 20px; background: #fff; box-shadow: 0 30px 90px rgba(15, 23, 42, .28); color: var(--text); direction: rtl; }
+.app-dialog::backdrop { background: rgba(15, 23, 42, .58); backdrop-filter: blur(4px); }
+.app-dialog-card { display: grid; gap: 18px; padding: 22px; }
+.app-dialog-card > header { display: grid; grid-template-columns: 42px 1fr auto; align-items: start; gap: 12px; }
+.app-dialog-card > header h2 { margin: 1px 0 3px; font-size: 19px; }
+.app-dialog-card > header p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.9; white-space: pre-line; }
+.app-dialog-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; background: #eef2ff; color: var(--primary); font-size: 18px; font-weight: 900; }
+.app-dialog.is-danger .app-dialog-icon { background: #fff1f2; color: var(--danger); }
+.app-dialog.is-success .app-dialog-icon { background: #ecfdf5; color: var(--success); }
+.app-dialog-close { width: 30px; height: 30px; border-radius: 9px; background: #f4f6f9; color: #7b8798; cursor: pointer; font-size: 20px; line-height: 1; }
+.app-dialog-field { display: grid; gap: 6px; color: #475569; font-size: 12px; font-weight: 800; }
+.app-dialog-field[hidden], .app-dialog-card > footer [hidden] { display: none; }
+.app-dialog-field textarea { min-height: 105px; resize: vertical; }
+.app-dialog-field small { color: var(--danger); font-size: 11px; font-weight: 700; }
+.app-dialog-card > footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 15px; border-top: 1px solid #edf1f5; }
+.app-dialog.is-danger [data-app-dialog-submit] { background: var(--danger); }
+.app-dialog.is-danger [data-app-dialog-submit]:hover { background: #912018; box-shadow: 0 10px 25px rgba(180, 35, 24, .18); }
+
 .dashboard-page { min-height: calc(100vh - 138px); padding: 34px 0 70px; background: linear-gradient(180deg, #edf2f9 0, #f7f9fc 300px); }
 .dashboard-stack { display: grid; gap: 30px; }
 .dashboard-hero { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 30px; border-radius: 24px; background: linear-gradient(135deg, #111827, #2849bd); color: #fff; box-shadow: 0 20px 50px rgba(29, 51, 128, .23); }
