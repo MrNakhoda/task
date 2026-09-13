@@ -33,7 +33,7 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 
 php bin/console migrate
 php bin/console admin:create admin@example.com
-php -S 127.0.0.1:8080 -t public
+php -S 127.0.0.1:8080 -t public public/router.php
 ```
 
 سپس وارد `/login` شوید. فضای کاری اصلی در `/workspace` قرار دارد.
