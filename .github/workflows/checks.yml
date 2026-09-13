@@ -1,0 +1,28 @@
+name: TaskFlow checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo_mysql, fileinfo
+          coverage: none
+      - name: Validate Composer metadata
+        run: composer validate --strict --no-check-publish
+      - name: Lint PHP files
+        run: find src config public tests views -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Run regression tests
+        run: php tests/run.php

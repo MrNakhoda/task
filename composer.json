@@ -1,0 +1,28 @@
+{
+  "name": "mrnakhoda/taskflow",
+  "description": "Dynamic order, project, workflow and team task management for PHP 8.2 and MariaDB.",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": ">=8.2",
+    "ext-fileinfo": "*",
+    "ext-json": "*",
+    "ext-mbstring": "*",
+    "ext-openssl": "*",
+    "ext-pdo": "*",
+    "ext-pdo_mysql": "*"
+  },
+  "suggest": {
+    "ext-curl": "Required by the optional Zarinpal payment adapter.",
+    "ext-gd": "Recommended for application-specific image processing."
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/"
+    }
+  },
+  "scripts": {
+    "test": "php tests/run.php",
+    "lint": "find src config public tests views -name '*.php' -print0 | xargs -0 -n1 php -l"
+  }
+}

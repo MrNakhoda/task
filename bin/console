@@ -1,0 +1,110 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use App\Auth\AuthRepository;
+use App\Auth\PasswordHasher;
+use App\Core\ModuleRegistry;
+use App\Database\Migrator;
+use App\Notification\MailTransport;
+use App\Queue\JobQueue;
+
+require dirname(__DIR__) . '/bootstrap.php';
+
+/** @var array<string, array{class: class-string, migrations: string, depends: list<string>}> $registry */
+$registry = require APP_ROOT . '/config/modules.php';
+$migrator = new Migrator(new ModuleRegistry($registry));
+$command = $argv[1] ?? 'help';
+
+$option = static function (string $name) use ($argv): ?string {
+    $prefix = '--' . $name . '=';
+    foreach ($argv as $argument) {
+        if (str_starts_with($argument, $prefix)) {
+            return substr($argument, strlen($prefix));
+        }
+    }
+    return null;
+};
+
+$modules = static function () use ($option): ?array {
+    $value = $option('modules');
+    return $value === null ? null : array_values(array_filter(array_map('trim', explode(',', $value))));
+};
+
+switch ($command) {
+    case 'migrate':
+        $applied = $migrator->migrate($modules());
+        if ($applied === []) {
+            echo "Nothing to migrate.\n";
+            break;
+        }
+        foreach ($applied as $migration) {
+            echo "Migrated: {$migration}\n";
+        }
+        break;
+
+    case 'migration:status':
+        $applied = array_fill_keys($migrator->applied(), true);
+        foreach ($migrator->files($modules()) as $id => $path) {
+            echo sprintf("[%s] %s\n", isset($applied[$id]) ? 'x' : ' ', $id);
+        }
+        break;
+
+    case 'admin:create':
+        $email = strtolower(trim((string) ($argv[2] ?? '')));
+        $name = trim($option('name') ?? 'Administrator');
+        $password = $option('password');
+        $generated = false;
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            fwrite(STDERR, "Usage: php bin/console admin:create email@example.com [--name=Name] [--password=Secret]\n");
+            exit(2);
+        }
+        if ($password === null) {
+            $password = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
+            $generated = true;
+        }
+        if (strlen($password) < 10) {
+            fwrite(STDERR, "Password must contain at least 10 characters.\n");
+            exit(2);
+        }
+        $users = new AuthRepository();
+        if ($users->findByEmail($email) !== null) {
+            fwrite(STDERR, "A user with this email already exists.\n");
+            exit(2);
+        }
+        $id = $users->create($name, $email, (new PasswordHasher())->hash($password));
+        $users->assignRole($id, 'admin');
+        echo "Administrator created: {$email}\n";
+        if ($generated) {
+            echo "Generated password (shown once): {$password}\n";
+        }
+        break;
+
+    case 'queue:work':
+        $queue = new JobQueue();
+        $worked = $queue->workOnce(static function (string $type, array $payload): void {
+            if ($type === 'notification.email') {
+                (new MailTransport())->send($payload);
+                return;
+            }
+            throw new RuntimeException('No queue handler registered for: ' . $type);
+        });
+        echo $worked ? "Processed one job.\n" : "Queue is empty.\n";
+        break;
+
+    case 'help':
+    default:
+        echo <<<'HELP'
+Backend Template CLI
+
+Commands:
+  migrate [--modules=catalog,commerce]
+  migration:status [--modules=catalog,commerce]
+  admin:create email@example.com [--name=Name] [--password=Secret]
+  queue:work --once
+  help
+
+HELP;
+        break;
+}
