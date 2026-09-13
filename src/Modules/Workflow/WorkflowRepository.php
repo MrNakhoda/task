@@ -97,10 +97,25 @@ final class WorkflowRepository
             $params[] = (float) $filters['weight'];
         }
 
-        $sql = "SELECT o.*,p.name priority_name,p.color priority_color,pr.name project_name,(SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR '، ') FROM {$orderCustomers} oc JOIN {$customers} c ON c.id=oc.customer_id WHERE oc.order_id=o.id) customer_names FROM {$orders} o LEFT JOIN {$priorities} p ON p.id=o.priority_id LEFT JOIN {$projects} pr ON pr.id=o.project_id WHERE " . implode(' AND ', $where) . ' ORDER BY p.sort_order DESC,o.created_at DESC LIMIT 300';
+        if (trim((string) ($filters['search'] ?? '')) !== '') {
+            $where[] = '(o.title LIKE ? OR o.order_number LIKE ?)';
+            $search = '%' . trim((string) $filters['search']) . '%';
+            $params[] = $search;
+            $params[] = $search;
+        }
+
+        $projectMembers = Table::name('project_members');
+        $users = Table::name('users');
+        $steps = Table::name('order_workflow_steps');
+        $sql = "SELECT o.*,p.name priority_name,p.color priority_color,pr.name project_name,(SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR '، ') FROM {$orderCustomers} oc JOIN {$customers} c ON c.id=oc.customer_id WHERE oc.order_id=o.id) customer_names,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$projectMembers} pm JOIN {$users} u ON u.id=pm.user_id WHERE pm.project_id=o.project_id) member_names,(SELECT COUNT(*) FROM {$projectMembers} pmc WHERE pmc.project_id=o.project_id) member_count,(SELECT COUNT(*) FROM {$steps} sc WHERE sc.order_id=o.id AND sc.status<>'disabled') stage_count FROM {$orders} o LEFT JOIN {$priorities} p ON p.id=o.priority_id LEFT JOIN {$projects} pr ON pr.id=o.project_id WHERE " . implode(' AND ', $where) . ' ORDER BY p.sort_order DESC,o.created_at DESC LIMIT 300';
         $statement = Connection::get()->prepare($sql);
         $statement->execute($params);
         return $statement->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function projects(array $filters = []): array
+    {
+        return $this->orders($filters);
     }
 
     public function tasks(int $userId, bool $manageAll, array $filters = []): array
@@ -135,16 +150,51 @@ final class WorkflowRepository
             $params[] = '%' . trim((string) $filters['customer']) . '%';
         }
         $whereSql = $where === [] ? '1=1' : implode(' AND ', $where);
-        $sql = "SELECT t.*,o.order_number,o.title order_title,o.progress_percent,tt.name task_type_name,tt.color task_type_color,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=t.id) assignee_names FROM {$tasks} t JOIN {$orders} o ON o.id=t.order_id JOIN {$types} tt ON tt.id=t.task_type_id WHERE {$whereSql} ORDER BY FIELD(t.status,'in_progress','open','completed'),t.created_at DESC LIMIT 300";
+        $sql = "SELECT t.*,COALESCE(o.order_number,'—') order_number,COALESCE(o.title,'تسک مستقل') order_title,COALESCE(o.progress_percent,0) progress_percent,tt.name task_type_name,tt.color task_type_color,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=t.id) assignee_names FROM {$tasks} t LEFT JOIN {$orders} o ON o.id=t.order_id JOIN {$types} tt ON tt.id=t.task_type_id WHERE {$whereSql} ORDER BY FIELD(t.status,'in_progress','open','completed'),t.created_at DESC LIMIT 300";
         $statement = Connection::get()->prepare($sql);
         $statement->execute($params);
         return $statement->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function createStandaloneTask(array $data, int $actorId): int
+    {
+        $assigneeIds = $this->ids($data['user_ids'] ?? []);
+        if ($assigneeIds === []) throw new RuntimeException('حداقل یک مسئول برای تسک انتخاب کنید.');
+        $tasks = Table::name('tasks');
+        $assignees = Table::name('task_assignees');
+        $notifications = Table::name('user_notifications');
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("INSERT INTO {$tasks} (task_type_id,title,description,is_standalone,due_at,created_by) VALUES (?,?,?,1,?,?)")->execute([
+                (int) ($data['task_type_id'] ?? 0),
+                $this->required((string) ($data['title'] ?? ''), 'عنوان تسک'),
+                $data['description'] ?? null,
+                ($data['due_at'] ?? '') !== '' ? $data['due_at'] : null,
+                $actorId,
+            ]);
+            $taskId = (int) $pdo->lastInsertId();
+            $assign = $pdo->prepare("INSERT INTO {$assignees} (task_id,user_id,assigned_by) VALUES (?,?,?)");
+            $notify = $pdo->prepare("INSERT INTO {$notifications} (user_id,event_type,title,body,link_url) VALUES (?,'task.assigned','تسک جدید برای شما',?, '/workspace#tasks')");
+            foreach ($assigneeIds as $userId) {
+                $assign->execute([$taskId, $userId, $actorId]);
+                $notify->execute([$userId, (string) $data['title']]);
+            }
+            $this->history(null, $taskId, $actorId, 'task.created', 'تسک مستقل ایجاد و تخصیص داده شد.', ['user_ids' => $assigneeIds]);
+            $pdo->commit();
+            return $taskId;
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
     public function order(int $orderId): ?array
     {
         $orders = Table::name('work_orders');
-        $statement = Connection::get()->prepare("SELECT * FROM {$orders} WHERE id=? AND deleted_at IS NULL LIMIT 1");
+        $priorities = Table::name('order_priorities');
+        $projectTable = Table::name('projects');
+        $statement = Connection::get()->prepare("SELECT o.*,p.name priority_name,p.color priority_color,pr.name project_name FROM {$orders} o LEFT JOIN {$priorities} p ON p.id=o.priority_id LEFT JOIN {$projectTable} pr ON pr.id=o.project_id WHERE o.id=? AND o.deleted_at IS NULL LIMIT 1");
         $statement->execute([$orderId]);
         $order = $statement->fetch(PDO::FETCH_ASSOC);
         if (!$order) {
@@ -160,7 +210,9 @@ final class WorkflowRepository
         $attachments = Table::name('order_attachments');
         $files = Table::name('files');
         $reports = Table::name('task_reports');
-        $q = Connection::get()->prepare("SELECT s.*,tt.name task_type_name,t.id task_id,t.status task_status FROM {$steps} s JOIN {$types} tt ON tt.id=s.task_type_id LEFT JOIN {$tasks} t ON t.order_step_id=s.id WHERE s.order_id=? ORDER BY s.position,s.id");
+        $dependencies = Table::name('order_step_dependencies');
+        $assignees = Table::name('task_assignees');
+        $q = Connection::get()->prepare("SELECT s.*,tt.name task_type_name,t.id task_id,t.status task_status,(SELECT GROUP_CONCAT(d.depends_on_step_id ORDER BY d.depends_on_step_id) FROM {$dependencies} d WHERE d.step_id=s.id) dependency_ids,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=t.id) assignee_names FROM {$steps} s JOIN {$types} tt ON tt.id=s.task_type_id LEFT JOIN {$tasks} t ON t.order_step_id=s.id WHERE s.order_id=? ORDER BY s.position,s.id");
         $q->execute([$orderId]);
         $order['steps'] = $q->fetchAll(PDO::FETCH_ASSOC);
         $q = Connection::get()->prepare("SELECT h.*,u.name actor_name FROM {$history} h LEFT JOIN {$users} u ON u.id=h.actor_id WHERE h.order_id=? ORDER BY h.created_at DESC,h.id DESC LIMIT 300");
@@ -175,6 +227,10 @@ final class WorkflowRepository
         $q = Connection::get()->prepare("SELECT r.*,u.name user_name,t.title task_title FROM {$reports} r JOIN {$tasks} t ON t.id=r.task_id JOIN {$users} u ON u.id=r.user_id WHERE t.order_id=? ORDER BY r.created_at DESC,r.id DESC");
         $q->execute([$orderId]);
         $order['reports'] = $q->fetchAll(PDO::FETCH_ASSOC);
+        $projectMembers = Table::name('project_members');
+        $q = Connection::get()->prepare("SELECT u.id,u.name,u.email,pm.role_label FROM {$projectMembers} pm JOIN {$users} u ON u.id=pm.user_id WHERE pm.project_id=? ORDER BY u.name");
+        $q->execute([(int) ($order['project_id'] ?? 0)]);
+        $order['members'] = $q->fetchAll(PDO::FETCH_ASSOC);
         return $order;
     }
 
@@ -297,10 +353,65 @@ final class WorkflowRepository
         return (int) Connection::get()->lastInsertId();
     }
 
+    public function createWorkflowProject(array $data, int $actorId): int
+    {
+        $projects = Table::name('projects');
+        $members = Table::name('project_members');
+        $orders = Table::name('work_orders');
+        $orderCustomers = Table::name('order_customers');
+        $name = $this->required((string) ($data['name'] ?? $data['title'] ?? ''), 'نام پروژه');
+        $code = trim((string) ($data['code'] ?? ''));
+        if ($code === '') $code = 'PRJ-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("INSERT INTO {$projects} (name,code,description,status,due_at,created_by) VALUES (?,?,?,'active',?,?)")->execute([$name, $code, $data['description'] ?? null, ($data['due_at'] ?? '') !== '' ? substr((string) $data['due_at'], 0, 10) : null, $actorId]);
+            $containerId = (int) $pdo->lastInsertId();
+
+            $memberIds = $this->ids($data['member_ids'] ?? []);
+            $memberIds[] = $actorId;
+            $memberIds = array_values(array_unique($memberIds));
+            $addMember = $pdo->prepare("INSERT IGNORE INTO {$members} (project_id,user_id,role_label) VALUES (?,?,?)");
+            foreach ($memberIds as $userId) $addMember->execute([$containerId, $userId, null]);
+
+            $pdo->prepare("INSERT INTO {$orders} (order_number,title,project_id,workflow_template_id,priority_id,details_json,due_at,created_by) VALUES (?,?,?,?,?,?,?,?)")->execute([
+                $code,
+                $name,
+                $containerId,
+                (int) ($data['workflow_template_id'] ?? 0),
+                $this->nullableId($data['priority_id'] ?? null),
+                json_encode(['description' => (string) ($data['description'] ?? '')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+                ($data['due_at'] ?? '') !== '' ? $data['due_at'] : null,
+                $actorId,
+            ]);
+            $projectId = (int) $pdo->lastInsertId();
+            if ((int) ($data['customer_id'] ?? 0) > 0) {
+                $pdo->prepare("INSERT INTO {$orderCustomers} (order_id,customer_id,weight,weight_unit) VALUES (?,?,?,'gram')")->execute([$projectId, (int) $data['customer_id'], ($data['weight'] ?? '') !== '' ? (float) $data['weight'] : null]);
+            }
+            $this->history($projectId, null, $actorId, 'project.created', 'پروژه ایجاد شد.', ['code' => $code, 'member_ids' => $memberIds]);
+            $pdo->commit();
+            return $projectId;
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
     public function addProjectMember(int $projectId, int $userId, ?string $label): void
     {
         $table = Table::name('project_members');
         Connection::get()->prepare("INSERT INTO {$table} (project_id,user_id,role_label) VALUES (?,?,?) ON DUPLICATE KEY UPDATE role_label=VALUES(role_label)")->execute([$projectId, $userId, $label]);
+    }
+
+    public function addWorkflowProjectMember(int $workflowProjectId, int $userId, ?string $label, int $actorId): void
+    {
+        $orders = Table::name('work_orders');
+        $query = Connection::get()->prepare("SELECT project_id FROM {$orders} WHERE id=? AND deleted_at IS NULL");
+        $query->execute([$workflowProjectId]);
+        $containerId = (int) ($query->fetchColumn() ?: 0);
+        if ($containerId < 1) throw new RuntimeException('پروژه پیدا نشد.');
+        $this->addProjectMember($containerId, $userId, $label);
+        $this->history($workflowProjectId, null, $actorId, 'project.member_added', 'عضو جدید به پروژه اضافه شد.', ['user_id' => $userId]);
     }
 
     public function createCustomer(string $name, ?string $phone, ?string $email, ?string $notes): int
