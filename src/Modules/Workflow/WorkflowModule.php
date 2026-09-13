@@ -38,10 +38,13 @@ final class WorkflowModule implements Module
                 ? $next($request)
                 : Response::json(['ok' => false, 'error' => 'نشست منقضی شده؛ صفحه را تازه کنید.'], 419);
         };
-        $permission = static function (string $key) use ($auth, $authorization): callable {
-            return static function (Request $request, callable $next) use ($auth, $authorization, $key): Response {
+        $allows = static function (int $userId, string $key) use ($authorization): bool {
+            return $authorization->allows($userId, $key) || $authorization->allows($userId, 'workflow.admin') || $authorization->allows($userId, 'system.admin');
+        };
+        $permission = static function (string $key) use ($auth, $allows): callable {
+            return static function (Request $request, callable $next) use ($auth, $allows, $key): Response {
                 $user = $auth->user();
-                return $user !== null && ($authorization->allows((int) $user['id'], $key) || $authorization->allows((int) $user['id'], 'workflow.admin') || $authorization->allows((int) $user['id'], 'system.admin'))
+                return $user !== null && $allows((int) $user['id'], $key)
                     ? $next($request)
                     : Response::json(['ok' => false, 'error' => 'دسترسی کافی ندارید.'], 403);
             };
@@ -59,8 +62,8 @@ final class WorkflowModule implements Module
         $actor = static function () use ($auth): int {
             return (int) ($auth->user()['id'] ?? 0);
         };
-        $mayManageTasks = static function (int $userId) use ($authorization): bool {
-            return $authorization->allows($userId, 'tasks.manage') || $authorization->allows($userId, 'workflow.admin') || $authorization->allows($userId, 'system.admin');
+        $mayManageTasks = static function (int $userId) use ($allows): bool {
+            return $allows($userId, 'tasks.manage');
         };
         $isSystemAdmin = static function (int $userId) use ($authorization): bool {
             return $authorization->allows($userId, 'system.admin');
@@ -75,7 +78,14 @@ final class WorkflowModule implements Module
         $router->get('/api/v1/workflow/overview', $endpoint(static fn () => ['overview' => $repository->overview($actor(), $mayManageTasks($actor()))]), [$authenticated]);
         $router->get('/api/v1/workflow/reference', $endpoint(static fn () => [
             'reference' => $repository->referenceData(),
-            'capabilities' => ['system_admin' => $isSystemAdmin($actor())],
+            'capabilities' => [
+                'system_admin' => $isSystemAdmin($actor()),
+                'projects_manage' => $allows($actor(), 'orders.manage'),
+                'tasks_manage' => $allows($actor(), 'tasks.manage'),
+                'templates_manage' => $allows($actor(), 'templates.manage'),
+                'teams_manage' => $allows($actor(), 'teams.manage'),
+                'users_manage' => $allows($actor(), 'users.manage'),
+            ],
         ]), [$authenticated]);
         $router->get('/api/v1/workflow/templates', $endpoint(static fn () => ['templates' => $repository->templates()]), [$authenticated]);
         $router->get('/api/v1/workflow/orders', $endpoint(static fn (Request $request) => ['orders' => $repository->orders([
@@ -107,6 +117,12 @@ final class WorkflowModule implements Module
             'order_id' => $request->query('order_id', ''),
             'customer' => $request->query('customer', ''),
         ])]), [$authenticated]);
+        $router->get('/api/v1/workflow/tasks/{id}', $endpoint(static function (Request $request, array $params) use ($repository, $actor, $mayManageTasks): array {
+            $userId = $actor();
+            $task = $repository->task((int) ($params['id'] ?? 0), $userId, $mayManageTasks($userId));
+            if ($task === null) throw new RuntimeException('تسک پیدا نشد یا به آن دسترسی ندارید.');
+            return ['task' => $task];
+        }), [$authenticated]);
         $router->get('/api/v1/workflow/notifications', $endpoint(static fn () => ['notifications' => $repository->notifications($actor())]), [$authenticated]);
 
         $router->post('/api/v1/workflow/templates', $endpoint(static fn (Request $request) => ['id' => $repository->createTemplate((string) $request->input('name', ''), $request->input('description'), $actor())], 201), [$authenticated, $csrf, $permission('templates.manage')]);
@@ -148,6 +164,14 @@ final class WorkflowModule implements Module
         $router->post('/api/v1/workflow/projects/{id}/stages', $endpoint(static fn (Request $request, array $params) => ['id' => $engine->addOrderStep((int) ($params['id'] ?? 0), $actor(), $request->all())], 201), [$authenticated, $csrf, $permission('orders.manage')]);
 
         $router->post('/api/v1/workflow/tasks', $endpoint(static fn (Request $request) => ['id' => $repository->createStandaloneTask($request->all(), $actor())], 201), [$authenticated, $csrf, $permission('tasks.manage')]);
+        $router->post('/api/v1/workflow/tasks/{id}', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->updateStandaloneTask((int) ($params['id'] ?? 0), $request->all(), $actor());
+            return [];
+        }), [$authenticated, $csrf, $permission('tasks.manage')]);
+        $router->post('/api/v1/workflow/tasks/{id}/delete', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $repository->deleteStandaloneTask((int) ($params['id'] ?? 0));
+            return [];
+        }), [$authenticated, $csrf, $permission('tasks.manage')]);
         $router->post('/api/v1/workflow/tasks/{id}/start', $endpoint(static function (Request $request, array $params) use ($engine, $actor, $mayManageTasks): array {
             $userId = $actor();
             $engine->startTask((int) ($params['id'] ?? 0), $userId, $mayManageTasks($userId));
@@ -169,16 +193,40 @@ final class WorkflowModule implements Module
         }), [$authenticated, $csrf]);
 
         $router->post('/api/v1/workflow/task-types', $endpoint(static fn (Request $request) => ['id' => $repository->createTaskType((string) $request->input('name', ''), (string) $request->input('slug', ''), (string) $request->input('color', '#3157d5'), $request->input('description'))], 201), [$authenticated, $csrf, $permission('templates.manage')]);
+        $router->post('/api/v1/workflow/task-types/{id}', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $repository->updateTaskType((int) ($params['id'] ?? 0), $request->all());
+            return [];
+        }), [$authenticated, $csrf, $permission('templates.manage')]);
+        $router->post('/api/v1/workflow/task-types/{id}/delete', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $repository->deleteTaskType((int) ($params['id'] ?? 0));
+            return [];
+        }), [$authenticated, $csrf, $permission('templates.manage')]);
         $router->post('/api/v1/workflow/priorities', $endpoint(static fn (Request $request) => ['id' => $repository->createPriority((string) $request->input('key_name', ''), (string) $request->input('name', ''), (string) $request->input('color', '#64748b'), (int) $request->input('sort_order', 0))], 201), [$authenticated, $csrf, $permission('orders.manage')]);
         $router->post('/api/v1/workflow/customers', $endpoint(static fn (Request $request) => ['id' => $repository->createCustomer((string) $request->input('name', ''), $request->input('phone'), $request->input('email'), $request->input('notes'))], 201), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/customers/{id}', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $repository->updateCustomer((int) ($params['id'] ?? 0), $request->all());
+            return [];
+        }), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/customers/{id}/delete', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $repository->deleteCustomer((int) ($params['id'] ?? 0));
+            return [];
+        }), [$authenticated, $csrf, $permission('orders.manage')]);
         $router->post('/api/v1/workflow/teams', $endpoint(static fn (Request $request) => ['id' => $repository->createTeam((string) $request->input('name', ''), $request->input('description'), $actor())], 201), [$authenticated, $csrf, $permission('teams.manage')]);
         $router->post('/api/v1/workflow/teams/{id}/members', $endpoint(static function (Request $request, array $params) use ($repository): array {
             $repository->addTeamMember((int) ($params['id'] ?? 0), (int) $request->input('user_id', 0), (bool) $request->input('is_lead', false));
             return [];
         }), [$authenticated, $csrf, $permission('teams.manage')]);
         $router->post('/api/v1/workflow/projects', $endpoint(static fn (Request $request) => ['id' => $repository->createWorkflowProject($request->all(), $actor())], 201), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/projects/{id}', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->updateWorkflowProject((int) ($params['id'] ?? 0), $request->all(), $actor());
+            return [];
+        }), [$authenticated, $csrf, $permission('orders.manage')]);
         $router->post('/api/v1/workflow/projects/{id}/members', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
             $repository->addWorkflowProjectMember((int) ($params['id'] ?? 0), (int) $request->input('user_id', 0), $request->input('role_label'), $actor());
+            return [];
+        }), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/projects/{id}/members/remove', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->removeWorkflowProjectMember((int) ($params['id'] ?? 0), (int) $request->input('user_id', 0), $actor());
             return [];
         }), [$authenticated, $csrf, $permission('orders.manage')]);
         $router->post('/api/v1/workflow/projects/{id}/delete', $endpoint(static function (Request $request, array $params) use ($repository): array {
@@ -198,8 +246,8 @@ final class WorkflowModule implements Module
         }), [$authenticated, $csrf, $systemAdmin]);
         $router->post('/api/v1/workflow/users', $endpoint(static fn (Request $request) => ['id' => $repository->createUser((string) $request->input('name', ''), (string) $request->input('email', ''), (string) $request->input('password', ''), (string) $request->input('role_key', 'user'))], 201), [$authenticated, $csrf, $permission('users.manage')]);
         $router->post('/api/v1/workflow/roles', $endpoint(static fn (Request $request) => ['id' => $repository->createRole((string) $request->input('key_name', ''), (string) $request->input('display_name', ''), (array) $request->input('permissions', []))], 201), [$authenticated, $csrf, $permission('users.manage')]);
-        $router->post('/api/v1/workflow/users/{id}/roles', $endpoint(static function (Request $request, array $params) use ($repository): array {
-            $repository->assignRole((int) ($params['id'] ?? 0), (int) $request->input('role_id', 0));
+        $router->post('/api/v1/workflow/users/{id}/roles', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->replaceUserRole((int) ($params['id'] ?? 0), (int) $request->input('role_id', 0), $actor());
             return [];
         }), [$authenticated, $csrf, $permission('users.manage')]);
 
@@ -208,6 +256,18 @@ final class WorkflowModule implements Module
             if ($file === null) throw new RuntimeException('تصویر انتخاب نشده است.');
             $upload = new UploadService();
             $path = $upload->storeImage($file, 'orders');
+            try {
+                return ['id' => $repository->attachOrderImage((int) ($params['id'] ?? 0), $actor(), $path, (string) ($file['name'] ?? ''), (string) ($file['type'] ?? 'application/octet-stream'), (int) ($file['size'] ?? 0), $request->input('caption'))];
+            } catch (\Throwable $exception) {
+                $upload->delete($path);
+                throw $exception;
+            }
+        }, 201), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/projects/{id}/attachments', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $file = $request->file('image');
+            if ($file === null) throw new RuntimeException('تصویر انتخاب نشده است.');
+            $upload = new UploadService();
+            $path = $upload->storeImage($file, 'projects');
             try {
                 return ['id' => $repository->attachOrderImage((int) ($params['id'] ?? 0), $actor(), $path, (string) ($file['name'] ?? ''), (string) ($file['type'] ?? 'application/octet-stream'), (int) ($file['size'] ?? 0), $request->input('caption'))];
             } catch (\Throwable $exception) {

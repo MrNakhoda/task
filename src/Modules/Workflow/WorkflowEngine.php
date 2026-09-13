@@ -169,6 +169,7 @@ final class WorkflowEngine
         try {
             $task = $this->lockedTask($taskId);
             if (in_array((string) $task['status'], ['completed', 'cancelled'], true)) throw new RuntimeException('مسئول این وظیفه قابل تغییر نیست.');
+            $this->assertEligibleAssignees($task, $userIds);
             $assignees = Table::name('task_assignees');
             $pdo->prepare("DELETE FROM {$assignees} WHERE task_id=?")->execute([$taskId]);
             $insert = $pdo->prepare("INSERT INTO {$assignees} (task_id,user_id,assigned_by) VALUES (?,?,?)");
@@ -362,14 +363,39 @@ final class WorkflowEngine
         $sql = "SELECT DISTINCT u.id FROM {$users} u WHERE u.status='active' AND u.deleted_at IS NULL AND (EXISTS (SELECT 1 FROM {$direct} d WHERE d.step_id=? AND d.user_id=u.id) OR EXISTS (SELECT 1 FROM {$stepTeams} st JOIN {$teamMembers} tm ON tm.team_id=st.team_id WHERE st.step_id=? AND tm.user_id=u.id) OR EXISTS (SELECT 1 FROM {$stepRoles} sr JOIN {$userRoles} ur ON ur.role_id=sr.role_id WHERE sr.step_id=? AND ur.user_id=u.id))";
         $statement = Connection::get()->prepare($sql);
         $statement->execute([$templateStepId, $templateStepId, $templateStepId]);
-        $ids = array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN));
-        if ($ids === [] && $projectId !== null) {
+        $defaultIds = array_values(array_unique(array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN))));
+        if ($projectId === null) return $defaultIds;
+
+        $members = Table::name('project_members');
+        $statement = Connection::get()->prepare("SELECT pm.user_id FROM {$members} pm JOIN {$users} u ON u.id=pm.user_id WHERE pm.project_id=? AND u.status='active' AND u.deleted_at IS NULL");
+        $statement->execute([$projectId]);
+        $memberIds = array_values(array_unique(array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN))));
+        if ($defaultIds === []) return $memberIds;
+
+        $matched = array_values(array_intersect($defaultIds, $memberIds));
+        return $matched !== [] ? $matched : $memberIds;
+    }
+
+    private function assertEligibleAssignees(array $task, array $userIds): void
+    {
+        $users = Table::name('users');
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        if ((int) ($task['order_id'] ?? 0) > 0) {
+            $orders = Table::name('work_orders');
             $members = Table::name('project_members');
-            $statement = Connection::get()->prepare("SELECT pm.user_id FROM {$members} pm JOIN {$users} u ON u.id=pm.user_id WHERE pm.project_id=? AND u.status='active' AND u.deleted_at IS NULL");
-            $statement->execute([$projectId]);
-            $ids = array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN));
+            $sql = "SELECT COUNT(DISTINCT u.id) FROM {$users} u JOIN {$members} pm ON pm.user_id=u.id JOIN {$orders} o ON o.project_id=pm.project_id WHERE o.id=? AND u.id IN ({$placeholders}) AND u.status='active' AND u.deleted_at IS NULL";
+            $statement = Connection::get()->prepare($sql);
+            $statement->execute([(int) $task['order_id'], ...$userIds]);
+            if ((int) $statement->fetchColumn() !== count($userIds)) {
+                throw new RuntimeException('برای تسک پروژه فقط اعضای فعال همان پروژه قابل انتخاب هستند.');
+            }
+            return;
         }
-        return array_values(array_unique($ids));
+        $statement = Connection::get()->prepare("SELECT COUNT(*) FROM {$users} WHERE id IN ({$placeholders}) AND status='active' AND deleted_at IS NULL");
+        $statement->execute($userIds);
+        if ((int) $statement->fetchColumn() !== count($userIds)) {
+            throw new RuntimeException('یکی از کاربران انتخاب‌شده فعال یا معتبر نیست.');
+        }
     }
 
     private function replaceDependencies(int $orderId, int $stepId, mixed $dependencyIds): void
