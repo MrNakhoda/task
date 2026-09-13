@@ -7,6 +7,91 @@
         if (typeof token === 'string' && token !== '' && csrfMeta()) csrfMeta().setAttribute('content', token);
     };
 
+    const dialog = document.querySelector('[data-app-dialog]');
+    const dialogForm = dialog?.querySelector('[data-app-dialog-form]');
+    const dialogTitle = dialog?.querySelector('[data-app-dialog-title]');
+    const dialogMessage = dialog?.querySelector('[data-app-dialog-message]');
+    const dialogIcon = dialog?.querySelector('[data-app-dialog-icon]');
+    const dialogField = dialog?.querySelector('[data-app-dialog-field]');
+    const dialogLabel = dialog?.querySelector('[data-app-dialog-label]');
+    const dialogInput = dialog?.querySelector('[data-app-dialog-input]');
+    const dialogHelp = dialog?.querySelector('[data-app-dialog-help]');
+    const dialogSubmit = dialog?.querySelector('[data-app-dialog-submit]');
+    const dialogFooterCancel = dialog?.querySelector('footer [data-app-dialog-cancel]');
+    let pendingDialog = null;
+
+    const settleDialog = (value) => {
+        if (!pendingDialog) return;
+        const resolve = pendingDialog.resolve;
+        pendingDialog = null;
+        if (dialog?.open) dialog.close();
+        resolve(value);
+    };
+
+    const dismissDialog = () => {
+        if (!pendingDialog) return;
+        settleDialog(pendingDialog.mode === 'prompt' ? null : false);
+    };
+
+    const showDialog = (config) => new Promise((resolve) => {
+        if (!dialog || !dialogForm || !dialogTitle || !dialogMessage || !dialogIcon || !dialogField || !dialogLabel || !dialogInput || !dialogHelp || !dialogSubmit || !dialogFooterCancel) {
+            resolve(config.mode === 'prompt' ? null : false);
+            return;
+        }
+        if (pendingDialog) dismissDialog();
+        const mode = config.mode || 'confirm';
+        pendingDialog = { resolve, mode, required: Boolean(config.required), expectedValue: config.expectedValue ?? null, invalidText: config.invalidText || 'مقدار واردشده صحیح نیست.' };
+        dialog.classList.toggle('is-danger', config.tone === 'danger');
+        dialog.classList.toggle('is-success', config.tone === 'success');
+        dialogTitle.textContent = config.title || (mode === 'alert' ? 'پیام سیستم' : 'تأیید عملیات');
+        dialogMessage.textContent = config.message || '';
+        dialogIcon.textContent = config.icon || (config.tone === 'danger' ? '!' : (config.tone === 'success' ? '✓' : '?'));
+        dialogField.hidden = mode !== 'prompt';
+        dialogLabel.textContent = config.inputLabel || 'توضیحات';
+        dialogInput.value = config.value || '';
+        dialogInput.placeholder = config.placeholder || '';
+        dialogInput.rows = config.multiline === false ? 2 : 5;
+        dialogHelp.hidden = true;
+        dialogHelp.textContent = '';
+        dialogSubmit.textContent = config.confirmText || (mode === 'alert' ? 'متوجه شدم' : 'تأیید');
+        dialogFooterCancel.hidden = mode === 'alert';
+        dialog.showModal();
+        requestAnimationFrame(() => (mode === 'prompt' ? dialogInput : dialogSubmit).focus());
+    });
+
+    dialogForm?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!pendingDialog) return;
+        if (pendingDialog.mode !== 'prompt') {
+            settleDialog(true);
+            return;
+        }
+        const value = dialogInput.value.trim();
+        if (pendingDialog.required && value === '') {
+            dialogHelp.textContent = 'تکمیل این فیلد الزامی است.';
+            dialogHelp.hidden = false;
+            dialogInput.focus();
+            return;
+        }
+        if (pendingDialog.expectedValue !== null && value !== pendingDialog.expectedValue) {
+            dialogHelp.textContent = pendingDialog.invalidText;
+            dialogHelp.hidden = false;
+            dialogInput.focus();
+            return;
+        }
+        settleDialog(value);
+    });
+    dialog?.querySelectorAll('[data-app-dialog-cancel]').forEach((button) => button.addEventListener('click', dismissDialog));
+    dialog?.addEventListener('cancel', (event) => { event.preventDefault(); dismissDialog(); });
+    dialog?.addEventListener('click', (event) => { if (event.target === dialog) dismissDialog(); });
+    dialogInput?.addEventListener('input', () => { if (dialogHelp) dialogHelp.hidden = true; });
+
+    window.AppModal = {
+        alert: (message, options = {}) => showDialog({ ...options, mode: 'alert', message }),
+        confirm: (message, options = {}) => showDialog({ ...options, mode: 'confirm', message }),
+        prompt: (message, options = {}) => showDialog({ ...options, mode: 'prompt', message }),
+    };
+
     const api = async (url, options = {}) => {
         const headers = new Headers(options.headers || {});
         headers.set('Accept', 'application/json');
@@ -54,7 +139,7 @@
                 await api(new URL('api/v1/auth/logout', document.baseURI).toString(), { method: 'POST', body: '{}' });
                 window.location.assign(new URL('.', document.baseURI).toString());
             } catch (error) {
-                window.alert(error.message);
+                await window.AppModal.alert(error.message, { title: 'خروج انجام نشد', tone: 'danger', icon: '!' });
                 button.disabled = false;
             }
         });

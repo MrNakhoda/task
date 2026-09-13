@@ -124,6 +124,18 @@ $test('workspace exposes business setup, guidance and assignment management', st
     $assert(is_string($guide) && str_contains($guide, 'منطق تخصیص'));
 });
 
+$test('browser-native alerts are replaced by styled application modals', static function () use ($assert): void {
+    $layout = file_get_contents(APP_ROOT . '/views/layout.php');
+    $appJavascript = file_get_contents(APP_ROOT . '/public/assets/app.js');
+    $workflowJavascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $assert(is_string($layout) && str_contains($layout, 'data-app-dialog'));
+    $assert(is_string($appJavascript) && str_contains($appJavascript, 'window.AppModal'));
+    foreach ([$appJavascript, $workflowJavascript] as $source) {
+        $assert(!str_contains($source, 'window.alert('), 'Native window.alert must not be used.');
+        $assert(preg_match('/(?<![.\\w])(alert|confirm|prompt)\\s*\\(/', $source) === 0, 'Native alert, confirm or prompt must not be used.');
+    }
+});
+
 $test('admin wipe preserves accounts and access control', static function () use ($assert): void {
     $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
     $assert(is_string($source) && str_contains($source, 'wipeTestData'));
