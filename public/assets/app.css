@@ -283,7 +283,7 @@ body:has(.tf-app) { background: #f4f6fa; }
 .tf-product div, .tf-user div { display: grid; min-width: 0; }
 .tf-product strong { font-size: 17px; }
 .tf-product small, .tf-user small { overflow: hidden; color: #9eabc5; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.tf-nav { display: grid; gap: 5px; padding-top: 23px; }
+.tf-nav { display: grid; gap: 5px; min-height: 0; padding-top: 10px; overflow-y: auto; }
 .tf-nav button { display: flex; align-items: center; gap: 11px; width: 100%; padding: 11px 13px; border-radius: 10px; background: transparent; color: #b7c1d6; cursor: pointer; text-align: right; font-weight: 700; }
 .tf-nav button span { display: grid; width: 22px; place-items: center; font-size: 17px; }
 .tf-nav button b { min-width: 21px; margin-right: auto; border-radius: 999px; background: #ef4444; color: #fff; font-size: 10px; text-align: center; }
@@ -308,11 +308,28 @@ body:has(.tf-app) { background: #f4f6fa; }
 .tf-button.ghost { border-color: transparent; background: transparent; color: #6d778b; }
 .tf-button.danger { border-color: #dc2626; background: #fff; color: #c81e1e; }
 .tf-button.danger:hover { background: #dc2626; color: #fff; }
+.tf-app [hidden] { display: none !important; }
+.push { margin-right: auto; }
 .tf-button.tiny { min-height: 32px; padding: 5px 10px; font-size: 10px; }
 .tf-link { padding: 4px; background: transparent; color: var(--tf-blue); cursor: pointer; font-size: 11px; font-weight: 800; }
 .tf-toast { position: fixed; z-index: 100; top: 18px; left: 24px; max-width: 360px; padding: 11px 15px; border: 1px solid #a7f3d0; border-radius: 10px; background: #ecfdf5; color: #087a55; box-shadow: 0 15px 40px rgba(15,23,42,.15); font-size: 12px; }
 .tf-toast.is-error { border-color: #fecaca; background: #fff1f2; color: #b42318; }
 .tf-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 18px; }
+.tf-setup-card { margin-bottom: 16px; overflow: hidden; border: 1px solid #d9e0f4; border-radius: 15px; background: #fff; }
+.tf-setup-card:empty { display: none; }
+.tf-setup-card > header { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 18px; border-bottom: 1px solid #edf0f7; background: #f8f9ff; }
+.tf-setup-card > header div { display: grid; }
+.tf-setup-card > header span { color: #68789f; font-size: 9px; font-weight: 900; }
+.tf-setup-card > header strong { font-size: 13px; }
+.tf-setup-card > header button, .tf-context-help button, .tf-guide-steps button { background: transparent; color: var(--tf-blue); cursor: pointer; font-size: 10px; font-weight: 900; }
+.tf-setup-card > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tf-setup-card > div > button { display: flex; align-items: center; gap: 9px; padding: 13px 16px; border-left: 1px solid #edf0f5; background: #fff; color: inherit; cursor: pointer; text-align: right; }
+.tf-setup-card > div > button:hover { background: #fafbff; }
+.tf-setup-card > div > button > b { display: grid; width: 27px; height: 27px; flex: none; place-items: center; border-radius: 8px; background: #eef1f7; color: #6d7890; font-size: 10px; }
+.tf-setup-card > div > button.done > b { background: #e8f8ef; color: #14865b; }
+.tf-setup-card > div > button span { display: grid; }
+.tf-setup-card > div > button strong { font-size: 10px; }
+.tf-setup-card > div > button small { color: #8c96aa; font-size: 8px; }
 .tf-metrics article { display: flex; align-items: center; gap: 13px; padding: 20px; border: 1px solid var(--tf-line); border-radius: 15px; background: #fff; box-shadow: 0 6px 18px rgba(24,32,51,.04); }
 .tf-metrics i { display: grid; width: 43px; height: 43px; flex: none; place-items: center; border-radius: 12px; background: #edf1ff; color: #4969e8; font-style: normal; }
 .tf-metrics i.orange { background: #fff3e8; color: #e4771c; }
@@ -334,6 +351,10 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-row-progress { margin-right: auto; color: var(--tf-blue); font-weight: 900; }
 .tf-check-dot { width: 17px; height: 17px; flex: none; border: 2px solid #b7c1d3; border-radius: 50%; }
 .tf-filters { display: grid; grid-template-columns: minmax(220px, 1fr) 180px 180px auto; gap: 9px; margin-bottom: 18px; padding: 12px; border: 1px solid var(--tf-line); border-radius: 13px; background: #fff; }
+.tf-filters.task-filters { grid-template-columns: repeat(4, minmax(140px, 1fr)) auto; }
+.tf-context-help { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; padding: 11px 14px; border: 1px solid #dbe3f9; border-radius: 11px; background: #f6f8ff; color: #66738d; font-size: 10px; }
+.tf-context-help b { flex: none; color: #354d9d; }
+.tf-context-help button { margin-right: auto; white-space: nowrap; }
 .tf-filters input, .tf-filters select, .tf-form input, .tf-form select, .tf-form textarea, .tf-inline-form input, .tf-inline-form select, .tf-modal-card input, .tf-modal-card select, .tf-modal-card textarea { min-height: 41px; padding: 8px 11px; border: 1px solid #d8deea; border-radius: 9px; background: #fff; font-size: 12px; }
 .tf-project-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .tf-project-card { padding: 18px; border: 1px solid var(--tf-line); border-radius: 15px; background: #fff; box-shadow: 0 6px 18px rgba(24,32,51,.035); cursor: pointer; }
@@ -385,10 +406,14 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-editor-head h2 { margin: 0 0 3px; font-size: 22px; }
 .tf-template-stages { display: grid; gap: 10px; padding-top: 18px; }
 .tf-template-stages article { display: grid; grid-template-columns: 38px 1fr; gap: 11px; padding: 13px; border: 1px solid #e6eaf1; border-radius: 11px; background: #fafbfc; }
+.tf-template-stages article.is-disabled { opacity: .58; }
 .tf-template-stages article > span { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; background: #e9edff; color: #4969e8; font-size: 11px; font-weight: 900; }
 .tf-template-stages h3, .tf-template-stages p { margin: 0; }
 .tf-template-stages h3 { font-size: 12px; }
-.tf-template-stages p, .tf-template-stages small { color: #828da0; font-size: 10px; }
+.tf-template-stages p, .tf-template-stages small { display: block; color: #828da0; font-size: 10px; }
+.tf-stage-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.tf-stage-actions button, .tf-actions button { padding: 0; background: transparent; color: var(--tf-blue); cursor: pointer; font-size: 9px; font-weight: 900; }
+.tf-stage-actions button.danger-text, .tf-actions button.danger-text, .danger-text { color: #c33a32; }
 .tf-entity-list, .tf-user-list { display: grid; }
 .tf-entity-list article, .tf-user-list article { display: flex; align-items: center; gap: 11px; padding: 13px 20px; border-bottom: 1px solid #f0f2f6; }
 .tf-entity-list article > i, .tf-user-list article > i { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border-radius: 10px; background: #edf1ff; color: #4969e8; font-style: normal; font-weight: 900; }
@@ -396,6 +421,9 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-entity-list strong, .tf-user-list strong { font-size: 12px; }
 .tf-entity-list small, .tf-user-list small { color: #8a94a7; font-size: 10px; }
 .tf-entity-list .tf-status, .tf-user-list .tf-status { margin-right: auto; }
+.tf-user-list article form { display: flex; align-items: center; gap: 5px; margin-right: auto; }
+.tf-user-list article form select { min-height: 32px; padding: 4px 7px; border: 1px solid #d8deea; border-radius: 7px; font-size: 9px; }
+.tf-user-list article form button { padding: 6px 8px; border-radius: 7px; background: #eef1ff; color: #425ed5; cursor: pointer; font-size: 8px; font-weight: 900; }
 .tf-form { display: grid; gap: 13px; padding: 20px; }
 .tf-form label, .tf-modal-card label { display: grid; gap: 5px; color: #596579; font-size: 11px; font-weight: 800; }
 .tf-check { display: flex !important; align-items: center; }
@@ -450,6 +478,9 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-modal-card > footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .tf-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tf-form-grid .span-2 { grid-column: span 2; }
+.tf-target-box { padding: 13px; border: 1px dashed #cbd5ec; border-radius: 11px; background: #f8f9fd; }
+.tf-target-box > strong { color: #45536c; font-size: 11px; }
+.tf-target-box > p { margin: 2px 0 10px; color: #8490a4; font-size: 9px; }
 .tf-modal-card select[multiple] { min-height: 98px; }
 .tf-modal-card label small { color: #929bad; font-size: 9px; font-weight: 400; }
 .tf-empty { display: grid; place-items: center; min-height: 190px; padding: 25px; color: #7e899c; text-align: center; }
@@ -457,6 +488,44 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-empty strong { color: #4c586e; font-size: 13px; }
 .tf-empty p { margin: 3px 0 12px; font-size: 11px; }
 .tf-loading { grid-column: 1 / -1; padding: 50px; color: #7d889b; text-align: center; }
+.tf-table { display: grid; overflow-x: auto; }
+.tf-table-row { display: grid; grid-template-columns: minmax(180px, 1.5fr) minmax(120px, .8fr) 100px 90px 120px; min-width: 720px; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #eef1f5; color: #687389; font-size: 10px; }
+.tf-table-row.customer { grid-template-columns: minmax(200px, 1.5fr) minmax(160px, 1fr) 100px 120px; min-width: 650px; }
+.tf-table-row.tf-table-head { background: #fafbfc; color: #8993a5; font-size: 9px; font-weight: 900; }
+.tf-table-row > span:first-child { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
+.tf-table-row > span:first-child small { grid-column: 2; color: #949dad; }
+.tf-color { width: 11px; height: 11px; border-radius: 50%; }
+.tf-actions { display: flex; gap: 10px; }
+.tf-task-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 10px; background: #f5f7fa; color: #6c778b; font-size: 10px; }
+.tf-task-description { margin: 0; padding: 3px 2px; color: #657084; font-size: 11px; line-height: 2; }
+.tf-subform { padding: 13px; border: 1px solid #e4e8f0; border-radius: 11px; }
+.tf-assignment-box { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; padding: 14px; border: 1px solid #cfd8f4; border-radius: 11px; background: #f8f9ff; }
+.tf-assignment-box label { display: grid; gap: 4px; }
+.tf-assignment-box label strong { font-size: 11px; }
+.tf-assignment-box label small { color: #8390a6; font-size: 9px; }
+.tf-assignment-box select { min-height: 105px; padding: 8px; border: 1px solid #d4dbeb; border-radius: 9px; }
+.tf-report-list { display: grid; gap: 7px; }
+.tf-report-list > h3 { margin: 0; font-size: 12px; }
+.tf-report-list article { padding: 10px 12px; border-right: 3px solid #8ca0ec; border-radius: 8px; background: #f7f8fb; }
+.tf-report-list article strong, .tf-report-list article small { font-size: 9px; }
+.tf-report-list article p { margin: 3px 0; color: #606c81; font-size: 10px; }
+.tf-report-list article small, .tf-muted { color: #929bad; }
+.tf-attachment-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; padding: 16px 20px; }
+.tf-attachment-grid a { display: grid; gap: 4px; color: #687389; font-size: 9px; }
+.tf-attachment-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid #e3e7ef; border-radius: 10px; }
+.tf-upload { padding-top: 0; }
+.tf-guide-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 15px; }
+.tf-guide-steps article { display: flex; gap: 12px; padding: 17px; border: 1px solid var(--tf-line); border-radius: 14px; background: #fff; }
+.tf-guide-steps article > b { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border-radius: 10px; background: #edf1ff; color: #4969e8; }
+.tf-guide-steps h2 { margin: 0; font-size: 13px; }
+.tf-guide-steps p { min-height: 38px; margin: 4px 0; color: #778297; font-size: 10px; line-height: 1.8; }
+.tf-guide-card { margin-bottom: 15px; }
+.tf-glossary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tf-glossary article { display: grid; gap: 3px; padding: 16px; border-left: 1px solid #eef1f5; }
+.tf-glossary strong { color: #425ed5; font-size: 11px; }
+.tf-glossary span, .tf-guide-copy { color: #6f7a8f; font-size: 10px; line-height: 1.9; }
+.tf-guide-copy { padding: 13px 20px; }
+.tf-guide-copy p { margin: 4px 0; }
 .tf-danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 16px; padding: 18px 20px; border: 1px solid #fecaca; border-radius: 14px; background: #fff7f7; }
 .tf-danger-zone[hidden] { display: none; }
 .tf-danger-zone strong { color: #b42318; font-size: 13px; }
@@ -466,6 +535,8 @@ button.tf-row:hover { background: #fafbfe; }
 @media (max-width: 1120px) {
     .tf-project-grid, .tf-stage-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .tf-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tf-guide-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tf-glossary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {
     .tf-app { display: block; }
@@ -477,6 +548,8 @@ button.tf-row:hover { background: #fafbfe; }
     .tf-dashboard-grid, .tf-split, .tf-workflow-layout { grid-template-columns: 1fr; }
     .tf-template-list { max-height: 300px; overflow: auto; }
     .tf-task-columns { grid-template-columns: 1fr; }
+    .tf-setup-card > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tf-attachment-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
     .tf-page-head, .tf-editor-head, .tf-project-hero { align-items: flex-start; flex-direction: column; }
@@ -485,4 +558,9 @@ button.tf-row:hover { background: #fafbfe; }
     .tf-metrics article { padding: 14px; }
     .tf-project-score { text-align: right; }
     .tf-danger-zone { align-items: flex-start; flex-direction: column; }
+    .tf-context-help, .tf-setup-card > header { align-items: flex-start; flex-direction: column; }
+    .tf-context-help button { margin-right: 0; }
+    .tf-setup-card > div, .tf-guide-steps, .tf-glossary { grid-template-columns: 1fr; }
+    .tf-assignment-box { grid-template-columns: 1fr; }
+    .tf-attachment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

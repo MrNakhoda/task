@@ -101,12 +101,27 @@ $test('workflow engine implements automatic dependency progression', static func
 $test('workflow API exposes project task and administration endpoints', static function () use ($assert): void {
     $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
     $assert(is_string($source));
-    foreach (['/projects', '/projects/{id}/activate', '/projects/{id}/delete', '/tasks', '/tasks/{id}/complete', '/templates/{id}/steps', '/templates/{id}/delete', '/admin/wipe', '/teams/{id}/members', '/users', '/notifications'] as $route) {
+    foreach (['/projects', '/projects/{id}/activate', '/projects/{id}/delete', '/projects/{id}/members/remove', '/projects/{id}/attachments', '/tasks', '/tasks/{id}', '/tasks/{id}/assignees', '/tasks/{id}/complete', '/task-types/{id}', '/task-types/{id}/delete', '/customers/{id}', '/templates/{id}/steps', '/templates/{id}/delete', '/admin/wipe', '/teams/{id}/members', '/users', '/notifications'] as $route) {
         $assert(str_contains($source, $route), 'Missing API route: ' . $route);
     }
     $assert(str_contains($source, 'createWorkflowProject'));
     $assert(str_contains($source, 'createStandaloneTask'));
     $assert(str_contains($source, '$systemAdmin'));
+});
+
+$test('workspace exposes business setup, guidance and assignment management', static function () use ($assert): void {
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $engine = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowEngine.php');
+    $guide = file_get_contents(APP_ROOT . '/docs/USER_GUIDE_FA.md');
+    $assert(is_string($view) && str_contains($view, 'data-view="task-types"'));
+    $assert(str_contains($view, 'data-view="guide"'));
+    $assert(str_contains($view, 'data-save-task-type'));
+    $assert(is_string($javascript) && str_contains($javascript, 'data-task-assignees'));
+    $assert(str_contains($javascript, 'eligible_assignees'));
+    $assert(is_string($engine) && str_contains($engine, 'assertEligibleAssignees'));
+    $assert(str_contains($engine, 'array_intersect'));
+    $assert(is_string($guide) && str_contains($guide, 'منطق تخصیص'));
 });
 
 $test('admin wipe preserves accounts and access control', static function () use ($assert): void {
