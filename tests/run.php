@@ -127,6 +127,10 @@ $test('archive, member access, user and role safeguards are wired end to end', s
         $assert(is_string($module) && str_contains($module, $route), 'Missing protected update route: ' . $route);
     }
     $assert(str_contains($module, "\$permission('roles.manage')"));
+    $assert(
+        str_contains($module, 'use ($repository, $actor, $allows, $mayManageProjects, $mayManageTasks, $isSystemAdmin)'),
+        'The workflow reference endpoint must capture the system-admin capability callback.'
+    );
     $assert(is_string($repository) && str_contains($repository, 'assertFullAdministratorRemains'));
     $assert(str_contains($repository, 'EXISTS (SELECT 1 FROM {$projectMembers} mine'));
     $assert(str_contains($repository, 'task_can_work'));
