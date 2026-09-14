@@ -1,30 +1,56 @@
 <?php
 $pageTitle = 'مدیریت پروژه‌ها · ' . $appName;
-$pageScript = $to('/assets/workflow.js');
+$pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT . '/public/assets/workflow.js');
 ?>
 <section class="tf-app" data-workspace>
+    <svg class="tf-icon-sprite" aria-hidden="true">
+        <symbol id="tf-i-home" viewBox="0 0 24 24"><path d="M3 10.8 12 3l9 7.8v9.7a.5.5 0 0 1-.5.5H15v-6H9v6H3.5a.5.5 0 0 1-.5-.5z"/></symbol>
+        <symbol id="tf-i-project" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h4l2 2h7A1.5 1.5 0 0 1 20 7.5v10a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z"/></symbol>
+        <symbol id="tf-i-task" viewBox="0 0 24 24"><path d="m8 12 2.5 2.5L16 9M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/></symbol>
+        <symbol id="tf-i-flow" viewBox="0 0 24 24"><path d="M6 6h8m4 0h.01M10 12h8M6 12h.01M6 18h8m4 0h.01"/></symbol>
+        <symbol id="tf-i-tag" viewBox="0 0 24 24"><path d="m4 12 8-8h7a1 1 0 0 1 1 1v7l-8 8zm11-4h.01"/></symbol>
+        <symbol id="tf-i-customer" viewBox="0 0 24 24"><path d="M16 20v-1.5A3.5 3.5 0 0 0 12.5 15h-5A3.5 3.5 0 0 0 4 18.5V20m5.5-9a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7-1a3 3 0 0 0 0-6m1.5 11a3 3 0 0 1 2 2.8V20"/></symbol>
+        <symbol id="tf-i-team" viewBox="0 0 24 24"><path d="M8.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7-1a3 3 0 1 0 0-6M2.5 20v-1.5A3.5 3.5 0 0 1 6 15h5a3.5 3.5 0 0 1 3.5 3.5V20m1-5h1.5a4 4 0 0 1 4 4v1"/></symbol>
+        <symbol id="tf-i-users" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8v-1a7 7 0 0 1 14 0v1"/></symbol>
+        <symbol id="tf-i-help" viewBox="0 0 24 24"><path d="M9.5 9a2.6 2.6 0 1 1 4.4 1.9c-1.1.9-1.9 1.4-1.9 3.1m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></symbol>
+        <symbol id="tf-i-bell" viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8Zm-8 11h4"/></symbol>
+        <symbol id="tf-i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+        <symbol id="tf-i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5m10-2a7 7 0 0 0-12-4L4 11m1 2a7 7 0 0 0 12 4l3-4"/></symbol>
+        <symbol id="tf-i-logout" viewBox="0 0 24 24"><path d="M10 5H5v14h5m4-4 4-3-4-3m4 3H9"/></symbol>
+    </svg>
     <aside class="tf-sidebar">
         <div class="tf-product"><span>TF</span><div><strong>TaskFlow</strong><small>مدیریت کار و پروژه</small></div></div>
         <nav class="tf-nav">
             <div class="tf-nav-label">کارهای روزانه</div>
-            <button class="is-active" data-nav-view="dashboard" type="button"><span>⌂</span> نمای کلی</button>
-            <button data-nav-view="projects" type="button"><span>▣</span> پروژه‌ها</button>
-            <button data-nav-view="tasks" type="button"><span>✓</span> وظایف</button>
+            <button class="is-active" data-nav-view="dashboard" type="button"><svg><use href="#tf-i-home"/></svg> نمای کلی</button>
+            <button data-nav-view="projects" type="button"><svg><use href="#tf-i-project"/></svg> پروژه‌ها</button>
+            <button data-nav-view="tasks" type="button"><svg><use href="#tf-i-task"/></svg> وظایف</button>
             <div class="tf-nav-label">راه‌اندازی و مدیریت</div>
-            <button data-nav-view="workflows" type="button"><span>⌘</span> قالب گردش‌کار</button>
-            <button data-nav-view="task-types" type="button"><span>◆</span> انواع وظیفه</button>
-            <button data-nav-view="customers" type="button"><span>◈</span> مشتری‌ها</button>
-            <button data-nav-view="teams" type="button"><span>♟</span> تیم‌ها</button>
-            <button data-nav-view="users" type="button"><span>◎</span> کاربران و نقش‌ها</button>
+            <button data-nav-view="workflows" type="button"><svg><use href="#tf-i-flow"/></svg> قالب گردش‌کار</button>
+            <button data-nav-view="task-types" type="button"><svg><use href="#tf-i-tag"/></svg> انواع وظیفه</button>
+            <button data-nav-view="customers" type="button"><svg><use href="#tf-i-customer"/></svg> مشتری‌ها</button>
+            <button data-nav-view="teams" type="button"><svg><use href="#tf-i-team"/></svg> تیم‌ها</button>
+            <button data-nav-view="users" type="button"><svg><use href="#tf-i-users"/></svg> کاربران و نقش‌ها</button>
             <div class="tf-nav-label">پشتیبانی</div>
-            <button data-nav-view="guide" type="button"><span>?</span> راهنمای کار با سیستم</button>
-            <button data-nav-view="notifications" type="button"><span>◉</span> اعلان‌ها <b data-nav-notifications></b></button>
+            <button data-nav-view="guide" type="button"><svg><use href="#tf-i-help"/></svg> راهنمای کار با سیستم</button>
         </nav>
         <div class="tf-user"><span><?= htmlspecialchars(mb_substr((string) ($user['name'] ?? 'U'), 0, 1), ENT_QUOTES, 'UTF-8') ?></span><div><strong><?= htmlspecialchars((string) ($user['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?></strong><small><?= htmlspecialchars((string) ($user['email'] ?? ''), ENT_QUOTES, 'UTF-8') ?></small></div></div>
     </aside>
 
     <main class="tf-main">
-        <header class="tf-mobile-head"><button type="button" data-sidebar-toggle>☰</button><strong>TaskFlow</strong><button type="button" data-refresh>↻</button></header>
+        <header class="tf-commandbar">
+            <div class="tf-command-context">
+                <button class="tf-icon-button tf-menu-button" type="button" data-sidebar-toggle aria-label="باز کردن منو"><svg><use href="#tf-i-menu"/></svg></button>
+                <div><small>فضای کار</small><strong data-current-view-title>نمای کلی</strong></div>
+            </div>
+            <div class="tf-command-actions">
+                <button class="tf-icon-button tf-notification-button" type="button" data-go="notifications" aria-label="اعلان‌ها"><svg><use href="#tf-i-bell"/></svg><b data-nav-notifications></b></button>
+                <button class="tf-icon-button" type="button" data-refresh aria-label="به‌روزرسانی اطلاعات"><svg><use href="#tf-i-refresh"/></svg></button>
+                <span class="tf-command-divider"></span>
+                <button class="tf-profile-button" type="button" data-logout><span><?= htmlspecialchars(mb_substr((string) ($user['name'] ?? 'U'), 0, 1), ENT_QUOTES, 'UTF-8') ?></span><div><strong><?= htmlspecialchars((string) ($user['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?></strong><small>خروج از حساب</small></div><svg><use href="#tf-i-logout"/></svg></button>
+            </div>
+        </header>
+        <button class="tf-sidebar-backdrop" type="button" data-sidebar-toggle aria-label="بستن منو"></button>
         <div class="tf-toast" data-message hidden></div>
 
         <section class="tf-view is-active" data-view="dashboard">
@@ -102,6 +128,13 @@ $pageScript = $to('/assets/workflow.js');
 
         <section class="tf-view" data-view="notifications"><div class="tf-page-head"><div><span>تغییرات کار</span><h1>اعلان‌ها</h1><p>تخصیص تسک و فعال‌شدن مراحل جدید.</p></div><button class="tf-button secondary" data-read-notifications>خواندن همه</button></div><section class="tf-card tf-notifications" data-notification-list></section></section>
     </main>
+
+    <nav class="tf-mobile-nav" aria-label="دسترسی سریع">
+        <button class="is-active" data-nav-view="dashboard" type="button"><svg><use href="#tf-i-home"/></svg><span>خانه</span></button>
+        <button data-nav-view="projects" type="button"><svg><use href="#tf-i-project"/></svg><span>پروژه‌ها</span></button>
+        <button data-nav-view="tasks" type="button"><svg><use href="#tf-i-task"/></svg><span>وظایف</span></button>
+        <button data-nav-view="notifications" type="button"><span class="tf-mobile-bell"><svg><use href="#tf-i-bell"/></svg><b data-nav-notifications></b></span><span>اعلان‌ها</span></button>
+    </nav>
 
     <dialog class="tf-dialog" data-modal="project"><form method="dialog" class="tf-modal-card" data-create-project><header><div><h2>ساخت پروژه جدید</h2><p>کار چندمرحله‌ای مثل «انگشتر گلوریا»</p></div><button type="button" data-close-modal>×</button></header><div class="tf-form-grid"><label>نام پروژه<input name="name" required placeholder="انگشتر گلوریا"></label><label>کد پروژه<input name="code" placeholder="GLORIA-RING"></label><label>قالب گردش‌کار<select name="workflow_template_id" data-options="templates" required></select><small>مرحله‌ها از این قالب ساخته می‌شوند.</small></label><label>اولویت<select name="priority_id" data-options="priorities"><option value="">عادی</option></select></label><label>موعد انجام<input name="due_at" type="datetime-local"></label><label>مشتری<select name="customer_id" data-options="customers"><option value="">بدون مشتری</option></select></label><label>وزن مشتری<input name="weight" type="number" min="0" step="0.001" placeholder="گرم"></label><label class="span-2">اعضای پروژه<select name="member_ids" data-options="users" multiple required></select><small>فقط افراد حاضر در این پروژه را انتخاب کن. با Ctrl چند نفر انتخاب می‌شوند.</small></label><label class="span-2">توضیحات<textarea name="description" rows="3"></textarea></label></div><footer><button type="button" class="tf-button ghost" data-close-modal>انصراف</button><button class="tf-button" type="submit">ساخت پیش‌نویس پروژه</button></footer></form></dialog>
 

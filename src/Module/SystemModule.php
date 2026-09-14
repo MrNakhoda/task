@@ -53,22 +53,17 @@ final class SystemModule implements Module
             'modules' => $this->enabledModules,
         ]));
 
-        $router->get('/', fn (): Response => View::page('home', [
-            'user' => $auth->user(),
-            'modules' => $this->enabledModules,
-        ]));
+        $router->get('/', fn (): Response => Response::redirect($auth->user() === null ? '/login' : '/workspace'));
 
         $router->get('/login', static function () use ($auth): Response {
-            return $auth->user() !== null ? Response::redirect('/dashboard') : View::page('login');
+            return $auth->user() !== null ? Response::redirect('/workspace') : View::page('login');
         });
 
         $router->get('/register', static function () use ($auth): Response {
-            return $auth->user() !== null ? Response::redirect('/dashboard') : View::page('register');
+            return $auth->user() !== null ? Response::redirect('/workspace') : View::page('register');
         });
 
-        $router->get('/dashboard', fn (): Response => $auth->user() === null
-            ? Response::redirect('/login')
-            : View::page('dashboard', ['user' => $auth->user(), 'modules' => $this->enabledModules]));
+        $router->get('/dashboard', fn (): Response => Response::redirect($auth->user() === null ? '/login' : '/workspace'));
 
         $router->get('/workspace', fn (): Response => $auth->user() === null
             ? Response::redirect('/login')
