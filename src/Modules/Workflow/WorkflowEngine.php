@@ -27,7 +27,7 @@ final class WorkflowEngine
             $dependencies = Table::name('order_step_dependencies');
             $candidates = Table::name('order_step_candidate_assignees');
 
-            $query = $pdo->prepare("SELECT * FROM {$orders} WHERE id=? AND deleted_at IS NULL FOR UPDATE");
+            $query = $pdo->prepare("SELECT * FROM {$orders} WHERE id=? AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE");
             $query->execute([$orderId]);
             $order = $query->fetch(PDO::FETCH_ASSOC);
             if (!$order) {
@@ -86,6 +86,7 @@ final class WorkflowEngine
         $pdo->beginTransaction();
         try {
             $task = $this->lockedTask($taskId);
+            $this->assertTaskWritable($task);
             $this->assertMayWork($taskId, $actorId, $manageAll);
             if ((string) $task['status'] === 'completed') {
                 throw new RuntimeException('این وظیفه قبلاً تکمیل شده است.');
@@ -109,8 +110,9 @@ final class WorkflowEngine
     {
         $text = trim($text);
         if ($text === '') throw new RuntimeException('متن گزارش الزامی است.');
-        $this->assertMayWork($taskId, $actorId, $manageAll);
         $task = $this->findTask($taskId);
+        $this->assertTaskWritable($task);
+        $this->assertMayWork($taskId, $actorId, $manageAll);
         if (in_array((string) $task['status'], ['completed', 'cancelled'], true)) {
             throw new RuntimeException('برای این وظیفه امکان ثبت گزارش وجود ندارد.');
         }
@@ -128,6 +130,7 @@ final class WorkflowEngine
         $pdo->beginTransaction();
         try {
             $task = $this->lockedTask($taskId);
+            $this->assertTaskWritable($task);
             $this->assertMayWork($taskId, $actorId, $manageAll);
             if ((string) $task['status'] === 'completed') {
                 $pdo->commit();
@@ -168,6 +171,7 @@ final class WorkflowEngine
         $pdo->beginTransaction();
         try {
             $task = $this->lockedTask($taskId);
+            $this->assertTaskWritable($task);
             if (in_array((string) $task['status'], ['completed', 'cancelled'], true)) throw new RuntimeException('مسئول این وظیفه قابل تغییر نیست.');
             $this->assertEligibleAssignees($task, $userIds);
             $assignees = Table::name('task_assignees');
@@ -192,7 +196,7 @@ final class WorkflowEngine
         try {
             $orders = Table::name('work_orders');
             $steps = Table::name('order_workflow_steps');
-            $query = $pdo->prepare("SELECT * FROM {$orders} WHERE id=? AND status='active' AND deleted_at IS NULL FOR UPDATE");
+            $query = $pdo->prepare("SELECT * FROM {$orders} WHERE id=? AND status='active' AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE");
             $query->execute([$orderId]);
             $order = $query->fetch(PDO::FETCH_ASSOC);
             if (!$order) throw new RuntimeException('سفارش قابل ویرایش نیست.');
@@ -240,7 +244,8 @@ final class WorkflowEngine
         try {
             $steps = Table::name('order_workflow_steps');
             $tasks = Table::name('tasks');
-            $query = $pdo->prepare("SELECT * FROM {$steps} WHERE id=? FOR UPDATE");
+            $orders = Table::name('work_orders');
+            $query = $pdo->prepare("SELECT s.* FROM {$steps} s JOIN {$orders} o ON o.id=s.order_id WHERE s.id=? AND o.deleted_at IS NULL AND o.archived_at IS NULL FOR UPDATE");
             $query->execute([$stepId]);
             $step = $query->fetch(PDO::FETCH_ASSOC);
             if (!$step) throw new RuntimeException('مرحله پیدا نشد.');
@@ -264,7 +269,8 @@ final class WorkflowEngine
         $pdo->beginTransaction();
         try {
             $steps = Table::name('order_workflow_steps');
-            $query = $pdo->prepare("SELECT order_id FROM {$steps} WHERE id=? FOR UPDATE");
+            $orders = Table::name('work_orders');
+            $query = $pdo->prepare("SELECT s.order_id FROM {$steps} s JOIN {$orders} o ON o.id=s.order_id WHERE s.id=? AND o.deleted_at IS NULL AND o.archived_at IS NULL FOR UPDATE");
             $query->execute([$stepId]);
             $orderId = (int) ($query->fetchColumn() ?: 0);
             if ($orderId < 1) throw new RuntimeException('مرحله پیدا نشد.');
@@ -284,7 +290,11 @@ final class WorkflowEngine
         $ids = $this->ids($stepIds);
         if ($ids === []) throw new RuntimeException('ترتیب مراحل خالی است.');
         $steps = Table::name('order_workflow_steps');
+        $orders = Table::name('work_orders');
         $pdo = Connection::get();
+        $check = $pdo->prepare("SELECT 1 FROM {$orders} WHERE id=? AND deleted_at IS NULL AND archived_at IS NULL");
+        $check->execute([$orderId]);
+        if (!$check->fetchColumn()) throw new RuntimeException('پروژه پیدا نشد یا آرشیوشده و فقط خواندنی است.');
         $statement = $pdo->prepare("UPDATE {$steps} SET position=? WHERE id=? AND order_id=?");
         foreach ($ids as $index => $stepId) $statement->execute([($index + 1) * 10, $stepId, $orderId]);
         $this->repository->history($orderId, null, $actorId, 'step.reordered', 'ترتیب مراحل تغییر کرد.', ['step_ids' => $ids]);
@@ -444,6 +454,21 @@ final class WorkflowEngine
         $statement = Connection::get()->prepare("SELECT 1 FROM {$assignees} WHERE task_id=? AND user_id=?");
         $statement->execute([$taskId, $actorId]);
         if (!$statement->fetchColumn()) throw new RuntimeException('این وظیفه به شما تخصیص داده نشده است.');
+    }
+
+    private function assertTaskWritable(array $task): void
+    {
+        if (($task['archived_at'] ?? null) !== null) {
+            throw new RuntimeException('وظیفه آرشیوشده فقط پس از بازگردانی قابل تغییر است.');
+        }
+        $orderId = (int) ($task['order_id'] ?? 0);
+        if ($orderId < 1) return;
+        $orders = Table::name('work_orders');
+        $statement = Connection::get()->prepare("SELECT 1 FROM {$orders} WHERE id=? AND deleted_at IS NULL AND archived_at IS NULL");
+        $statement->execute([$orderId]);
+        if (!$statement->fetchColumn()) {
+            throw new RuntimeException('پروژه آرشیوشده فقط پس از بازگردانی قابل تغییر است.');
+        }
     }
 
     private function findTask(int $taskId): array

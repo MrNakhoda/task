@@ -90,6 +90,14 @@ $test('workflow supports standalone tasks outside projects', static function () 
     $assert(is_string($repository) && str_contains($repository, 'createStandaloneTask'));
 });
 
+$test('workflow archive migration preserves data and separates role management', static function () use ($assert): void {
+    $sql = file_get_contents(APP_ROOT . '/database/modules/workflow/003_project_archive_and_role_management.sql');
+    $assert(is_string($sql));
+    $assert(substr_count($sql, 'ADD COLUMN archived_at') === 2, 'Projects and tasks must have independent archive timestamps.');
+    $assert(str_contains($sql, "('roles.manage', 'Manage roles and permissions')"));
+    $assert(str_contains($sql, "r.key_name = 'admin'"));
+});
+
 $test('workflow engine implements automatic dependency progression', static function () use ($assert): void {
     $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowEngine.php');
     $assert(is_string($source));
@@ -107,6 +115,26 @@ $test('workflow API exposes project task and administration endpoints', static f
     $assert(str_contains($source, 'createWorkflowProject'));
     $assert(str_contains($source, 'createStandaloneTask'));
     $assert(str_contains($source, '$systemAdmin'));
+});
+
+$test('archive, member access, user and role safeguards are wired end to end', static function () use ($assert): void {
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $engine = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowEngine.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    foreach (['/tasks/{id}/archive', '/tasks/{id}/restore', '/projects/{id}/archive', '/projects/{id}/restore', '/users/{id}', '/users/{id}/password', '/roles/{id}', '/roles/{id}/clone', '/roles/{id}/delete'] as $route) {
+        $assert(is_string($module) && str_contains($module, $route), 'Missing protected update route: ' . $route);
+    }
+    $assert(str_contains($module, "\$permission('roles.manage')"));
+    $assert(is_string($repository) && str_contains($repository, 'assertFullAdministratorRemains'));
+    $assert(str_contains($repository, 'EXISTS (SELECT 1 FROM {$projectMembers} mine'));
+    $assert(str_contains($repository, 'task_can_work'));
+    $assert(is_string($engine) && str_contains($engine, 'assertTaskWritable'));
+    $assert(is_string($view) && str_contains($view, 'data-view="archives"'));
+    $assert(str_contains($view, 'name="role_ids" data-options="roles" multiple'));
+    $assert(is_string($javascript) && str_contains($javascript, 'stageTaskActions(stage, archived)'));
+    $assert(str_contains($javascript, "api('projects?archived=only')"));
 });
 
 $test('workspace exposes business setup, guidance and assignment management', static function () use ($assert): void {
