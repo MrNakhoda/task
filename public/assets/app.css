@@ -471,6 +471,8 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-stage > p { margin: 0; color: #8a94a7; font-size: 10px; }
 .tf-dependency { min-height: 37px; margin-top: 10px; padding: 7px; border-radius: 7px; background: #f7f8fa; color: #7b8699; font-size: 9px; }
 .tf-stage-task { display: flex; align-items: center; justify-content: space-between; gap: 7px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #edf0f4; font-size: 9px; }
+.tf-stage-work-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.tf-stage-work-actions:empty { display: none; }
 .tf-timeline { display: grid; padding: 8px 20px 18px; }
 .tf-timeline article { display: grid; grid-template-columns: 14px 1fr; gap: 9px; padding: 10px 0; border-bottom: 1px solid #f0f2f6; }
 .tf-timeline article i { width: 8px; height: 8px; margin-top: 8px; border: 2px solid #8798df; border-radius: 50%; }
@@ -548,6 +550,17 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-danger-zone[hidden] { display: none; }
 .tf-danger-zone strong { color: #b42318; font-size: 13px; }
 .tf-danger-zone p { max-width: 850px; margin: 3px 0 0; color: #8f5450; font-size: 10px; }
+.tf-archive-stack { display: grid; gap: 16px; }
+.tf-archive-stack .tf-project-grid { padding: 18px; }
+.tf-task-archive-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 18px; }
+.tf-project-card.is-archived, .tf-task-card.is-archived { background: #fbfcfe; box-shadow: none; }
+.tf-user-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.tf-user-facts span { display: grid; gap: 2px; min-width: 0; padding: 10px; border: 1px solid #e4e8f0; border-radius: 10px; background: #f8f9fc; }
+.tf-user-facts small { color: #8a94a7; font-size: 10px; }
+.tf-user-facts strong { overflow: hidden; color: #4c586e; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.tf-role-list article { align-items: flex-start; }
+.tf-role-list article > span { gap: 2px; flex: 1; }
+.tf-role-list .tf-actions { flex-wrap: wrap; justify-content: flex-end; }
 .span-all { grid-column: 1 / -1; }
 
 @media (max-width: 1120px) {
@@ -565,7 +578,7 @@ button.tf-row:hover { background: #fafbfe; }
     .tf-mobile-head button { background: transparent; cursor: pointer; }
     .tf-dashboard-grid, .tf-split, .tf-workflow-layout { grid-template-columns: 1fr; }
     .tf-template-list { max-height: 300px; overflow: auto; }
-    .tf-task-columns { grid-template-columns: 1fr; }
+    .tf-task-columns, .tf-task-archive-list { grid-template-columns: 1fr; }
     .tf-setup-card > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .tf-attachment-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -581,6 +594,9 @@ button.tf-row:hover { background: #fafbfe; }
     .tf-setup-card > div, .tf-guide-steps, .tf-glossary { grid-template-columns: 1fr; }
     .tf-assignment-box { grid-template-columns: 1fr; }
     .tf-attachment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tf-user-facts { grid-template-columns: 1fr 1fr; }
+    .tf-role-list article { flex-wrap: wrap; }
+    .tf-role-list .tf-actions { width: 100%; justify-content: flex-start; margin-right: 45px; }
 }
 
 /* TaskFlow design system v3 ------------------------------------------------ */

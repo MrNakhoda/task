@@ -4,10 +4,10 @@
     const root = document.querySelector('[data-workspace]');
     if (!root) return;
 
-    const state = { reference: {}, capabilities: {}, projects: [], tasks: [], templates: [], notifications: [], selectedTemplate: null, selectedProject: null, selectedTask: null };
+    const state = { reference: {}, capabilities: {}, projects: [], tasks: [], archivedProjects: [], archivedTasks: [], templates: [], notifications: [], selectedTemplate: null, selectedProject: null, selectedTask: null };
     const labels = { draft: 'پیش‌نویس', active: 'فعال', completed: 'تکمیل‌شده', open: 'آماده شروع', in_progress: 'در حال انجام', pending: 'منتظر پیش‌نیاز', disabled: 'غیرفعال', cancelled: 'لغوشده' };
-    const viewTitles = { dashboard: 'نمای کلی', projects: 'پروژه‌ها', 'project-detail': 'جزئیات پروژه', tasks: 'وظایف', workflows: 'قالب‌های گردش‌کار', 'task-types': 'انواع وظیفه', customers: 'مشتری‌ها', teams: 'تیم‌ها', users: 'کاربران و نقش‌ها', guide: 'راهنمای سیستم', notifications: 'اعلان‌ها' };
-    const permissionLabels = { 'system.admin': 'مدیریت کامل سیستم', 'users.manage': 'مدیریت کاربران و نقش‌ها', 'templates.manage': 'مدیریت قالب و نوع وظیفه', 'orders.manage': 'مدیریت پروژه‌ها', 'tasks.manage': 'مدیریت همه تسک‌ها', 'tasks.work': 'انجام تسک‌های تخصیص‌یافته', 'teams.manage': 'مدیریت تیم‌ها', 'orders.read': 'مشاهده پروژه‌ها', 'catalog.manage': 'مدیریت کاتالوگ', 'crm.manage': 'مدیریت مشتری‌ها', 'hr.manage': 'مدیریت منابع انسانی', 'workflow.admin': 'مدیریت کامل گردش‌کار' };
+    const viewTitles = { dashboard: 'نمای کلی', projects: 'پروژه‌ها', 'project-detail': 'جزئیات پروژه', tasks: 'وظایف', archives: 'آرشیوها', workflows: 'قالب‌های گردش‌کار', 'task-types': 'انواع وظیفه', customers: 'مشتری‌ها', teams: 'تیم‌ها', users: 'کاربران و نقش‌ها', guide: 'راهنمای سیستم', notifications: 'اعلان‌ها' };
+    const permissionLabels = { 'system.admin': 'مدیریت کامل سیستم', 'users.manage': 'مدیریت کاربران', 'roles.manage': 'مدیریت نقش‌ها و دسترسی‌ها', 'templates.manage': 'مدیریت قالب و نوع وظیفه', 'orders.manage': 'مدیریت پروژه‌ها', 'tasks.manage': 'مدیریت همه تسک‌ها', 'tasks.work': 'انجام تسک‌های تخصیص‌یافته', 'teams.manage': 'مدیریت تیم‌ها', 'orders.read': 'مشاهده پروژه‌ها', 'catalog.manage': 'مدیریت کاتالوگ', 'crm.manage': 'مدیریت مشتری‌ها', 'hr.manage': 'مدیریت منابع انسانی', 'workflow.admin': 'مدیریت کامل گردش‌کار' };
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
     const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
     const endpoint = path => new URL(`api/v1/workflow/${path.replace(/^\//, '')}`, document.baseURI).toString();
@@ -24,6 +24,10 @@
         }
         const response = await fetch(endpoint(path), config);
         const payload = await response.json().catch(() => ({ ok: false, error: 'پاسخ سرور معتبر نیست.' }));
+        if (response.status === 401) {
+            window.location.assign(new URL('login', document.baseURI));
+            throw new Error('نشست شما پایان یافته است؛ دوباره وارد شوید.');
+        }
         if (!response.ok || !payload.ok) throw new Error(payload.error || 'عملیات انجام نشد.');
         return payload;
     }
@@ -163,6 +167,13 @@
         renderTasks(); renderDashboard();
     }
 
+    async function loadArchives() {
+        const [projects, tasks] = await Promise.all([api('projects?archived=only'), api('tasks?archived=only')]);
+        state.archivedProjects = projects.projects || [];
+        state.archivedTasks = tasks.tasks || [];
+        renderArchives();
+    }
+
     async function loadTemplates() {
         const payload = await api('templates');
         state.templates = payload.templates;
@@ -190,7 +201,7 @@
     }
 
     function projectCard(project) {
-        return `<article class="tf-project-card" data-project-open="${Number(project.id)}"><header><span class="tf-project-icon">${esc(String(project.title || 'پ').slice(0, 1))}</span>${statusBadge(project.status)}</header><h3>${esc(project.title)}</h3><p class="tf-code">${esc(project.order_number)}</p><div class="tf-progress-row">${progress(project.progress_percent)}</div><footer><span>♟ ${Number(project.member_count || 0).toLocaleString('fa-IR')} عضو</span><span>⌘ ${Number(project.stage_count || 0).toLocaleString('fa-IR')} مرحله</span>${project.due_at ? `<span>◷ ${esc(String(project.due_at).slice(0, 10))}</span>` : ''}</footer></article>`;
+        return `<article class="tf-project-card ${project.archived_at ? 'is-archived' : ''}" data-project-open="${Number(project.id)}"><header><span class="tf-project-icon">${esc(String(project.title || 'پ').slice(0, 1))}</span>${project.archived_at ? '<span class="tf-status status-disabled">آرشیوشده</span>' : statusBadge(project.status)}</header><h3>${esc(project.title)}</h3><p class="tf-code">${esc(project.order_number)}</p><div class="tf-progress-row">${progress(project.progress_percent)}</div><footer><span>♟ ${Number(project.member_count || 0).toLocaleString('fa-IR')} عضو</span><span>⌘ ${Number(project.stage_count || 0).toLocaleString('fa-IR')} مرحله</span>${project.archived_at ? `<span>◷ ${esc(String(project.archived_at).slice(0, 10))}</span>` : (project.due_at ? `<span>◷ ${esc(String(project.due_at).slice(0, 10))}</span>` : '')}</footer></article>`;
     }
 
     function renderProjects() {
@@ -200,15 +211,28 @@
 
     function taskCard(task) {
         const standalone = Number(task.is_standalone) === 1;
-        return `<article class="tf-task-card"><header><span class="tf-type" style="--type-color:${esc(task.task_type_color)}">${esc(task.task_type_name)}</span>${standalone ? '<span class="tf-independent">مستقل</span>' : ''}</header><h3>${esc(task.title)}</h3><p>${standalone ? 'بدون پروژه' : `پروژه: ${esc(task.order_title)}`}</p><small>مسئول: ${esc(task.assignee_names || 'تعیین نشده')}</small>${task.due_at ? `<small>موعد: ${esc(String(task.due_at).slice(0, 16))}</small>` : ''}<footer>${task.status === 'open' ? `<button class="tf-button tiny secondary" data-task-start="${Number(task.id)}">شروع</button>` : ''}${['open', 'in_progress'].includes(task.status) ? `<button class="tf-link" data-task-complete="${Number(task.id)}">تکمیل</button>` : statusBadge(task.status)}<button class="tf-link push" data-task-open="${Number(task.id)}">جزئیات و مسئولان</button></footer></article>`;
+        const canWork = Number(task.can_work) === 1;
+        const workActions = canWork && task.status === 'open' ? `<button class="tf-button tiny secondary" data-task-start="${Number(task.id)}">شروع</button>` : (canWork && task.status === 'in_progress' ? `<button class="tf-link" data-task-report="${Number(task.id)}">ثبت گزارش</button><button class="tf-link" data-task-complete="${Number(task.id)}">تکمیل</button>` : statusBadge(task.status));
+        const archiveAction = state.capabilities.tasks_manage && task.status === 'completed' && !task.archived_at ? `<button class="tf-link" data-task-archive="${Number(task.id)}">آرشیو</button>` : '';
+        const restoreAction = state.capabilities.tasks_manage && task.archived_at ? `<button class="tf-link" data-task-restore="${Number(task.id)}">بازگردانی</button>` : '';
+        return `<article class="tf-task-card ${task.archived_at ? 'is-archived' : ''}"><header><span class="tf-type" style="--type-color:${esc(task.task_type_color)}">${esc(task.task_type_name)}</span>${standalone ? '<span class="tf-independent">مستقل</span>' : ''}</header><h3>${esc(task.title)}</h3><p>${standalone ? 'بدون پروژه' : `پروژه: ${esc(task.order_title)}`}</p><small>مسئول: ${esc(task.assignee_names || 'تعیین نشده')}</small>${task.due_at ? `<small>موعد: ${esc(String(task.due_at).slice(0, 16))}</small>` : ''}<footer>${task.archived_at ? statusBadge('completed') : workActions}${archiveAction}${restoreAction}<button class="tf-link push" data-task-open="${Number(task.id)}">${task.status === 'completed' ? 'مشاهده گزارش‌ها' : 'جزئیات و مسئولان'}</button></footer></article>`;
     }
 
     function renderTasks() {
         const board = root.querySelector('[data-task-board]');
-        board.innerHTML = [['open', 'آماده شروع'], ['in_progress', 'در حال انجام'], ['completed', 'انجام‌شده']].map(([status, title]) => {
+        const columns = [['open', 'آماده شروع'], ['in_progress', 'در حال انجام']];
+        if (state.tasks.some(task => task.status === 'completed')) columns.push(['completed', 'انجام‌شده']);
+        board.innerHTML = columns.map(([status, title]) => {
             const tasks = state.tasks.filter(task => task.status === status);
             return `<section class="tf-task-column"><header><h2>${title}</h2><span>${tasks.length.toLocaleString('fa-IR')}</span></header><div>${tasks.map(taskCard).join('') || '<p class="tf-column-empty">موردی نیست</p>'}</div></section>`;
         }).join('');
+    }
+
+    function renderArchives() {
+        const projects = root.querySelector('[data-archived-project-list]');
+        const tasks = root.querySelector('[data-archived-task-list]');
+        if (projects) projects.innerHTML = state.archivedProjects.length ? state.archivedProjects.map(projectCard).join('') : '<div class="tf-empty span-all"><strong>پروژه آرشیوشده‌ای وجود ندارد</strong><p>پروژه تکمیل‌شده را از صفحه جزئیات به آرشیو منتقل کن.</p></div>';
+        if (tasks) tasks.innerHTML = state.archivedTasks.length ? state.archivedTasks.map(taskCard).join('') : '<div class="tf-empty"><strong>وظیفه آرشیوشده‌ای وجود ندارد</strong><p>انجام‌شده‌ها را از فیلتر وظایف پیدا و آرشیو کن.</p></div>';
     }
 
     function renderDashboard() {
@@ -228,20 +252,32 @@
         return parts.length ? parts.join('، ') : 'همه اعضای پروژه';
     }
 
+    function stageTaskActions(stage, readOnly = false) {
+        if (!stage.task_id || stage.status === 'pending') return '';
+        const taskId = Number(stage.task_id);
+        if (stage.task_status === 'completed') return `<button class="tf-button tiny secondary" data-task-open="${taskId}">مشاهده گزارش‌ها</button>`;
+        if (readOnly) return `<button class="tf-link" data-task-open="${taskId}">مشاهده جزئیات</button>`;
+        if (Number(stage.task_can_work) !== 1) return `<button class="tf-link" data-task-open="${taskId}">مشاهده جزئیات</button>`;
+        if (stage.task_status === 'open') return `<button class="tf-button tiny" data-task-start="${taskId}">شروع وظیفه</button>`;
+        if (stage.task_status === 'in_progress') return `<button class="tf-button tiny secondary" data-task-report="${taskId}">ثبت گزارش</button><button class="tf-button tiny" data-task-complete="${taskId}">تکمیل</button>`;
+        return `<button class="tf-link" data-task-open="${taskId}">مشاهده جزئیات</button>`;
+    }
+
     async function showProject(projectId) {
         go('project-detail');
         const target = root.querySelector('[data-project-detail]');
         target.innerHTML = '<div class="tf-loading">در حال دریافت پروژه…</div>';
         const payload = await api(`projects/${projectId}`);
         const project = state.selectedProject = payload.project;
+        const archived = Boolean(project.archived_at);
         const stageNames = Object.fromEntries((project.steps || []).map(stage => [Number(stage.id), stage.name]));
         const customers = (project.customers || []).map(customer => `${customer.name}${customer.weight ? ` · ${customer.weight} ${customer.weight_unit}` : ''}`).join('، ');
-        const actions = state.capabilities.projects_manage ? `${project.status === 'draft' ? `<button class="tf-button" data-project-activate="${Number(project.id)}">شروع پروژه و ساخت تسک‌ها</button>` : ''}${project.status === 'active' ? `<button class="tf-button secondary" data-open-project-stage="${Number(project.id)}">+ مرحله جدید</button>` : ''}<button class="tf-button secondary" data-edit-project="${Number(project.id)}">ویرایش پروژه</button>` : '';
+        const actions = state.capabilities.projects_manage ? `${archived ? `<button class="tf-button" data-project-restore="${Number(project.id)}">بازگردانی از آرشیو</button>` : `${project.status === 'draft' ? `<button class="tf-button" data-project-activate="${Number(project.id)}">شروع پروژه و ساخت تسک‌ها</button>` : ''}${project.status === 'active' ? `<button class="tf-button secondary" data-open-project-stage="${Number(project.id)}">+ مرحله جدید</button>` : ''}${project.status === 'completed' ? `<button class="tf-button secondary" data-project-archive="${Number(project.id)}">آرشیو پروژه</button>` : ''}<button class="tf-button secondary" data-edit-project="${Number(project.id)}">ویرایش پروژه</button>`}` : '';
         target.innerHTML = `<header class="tf-project-hero"><div><div class="tf-project-kicker">${esc(project.order_number)} · ${esc(project.priority_name || 'اولویت عادی')}</div><h1>${esc(project.title)}</h1><p>${esc(customers || projectDescription(project) || 'بدون مشتری')}</p></div><div class="tf-project-score"><strong>${Number(project.progress_percent).toLocaleString('fa-IR')}٪</strong><span>پیشرفت پروژه</span></div></header>
-            <div class="tf-project-toolbar">${statusBadge(project.status)}${actions}${state.capabilities.system_admin ? `<button class="tf-button danger push" data-delete-project="${Number(project.id)}">حذف پروژه</button>` : ''}</div>
-            <section class="tf-card tf-members"><div class="tf-card-head"><div><h2>۱. اعضای پروژه</h2><p>تسک‌های مراحل فقط بین افراد این پروژه توزیع می‌شوند.</p></div></div><div class="tf-member-pills">${(project.members || []).map(member => `<span><i>${esc(String(member.name).slice(0, 1))}</i>${esc(member.name)}<small>${esc(member.role_label || '')}</small>${state.capabilities.projects_manage ? `<button title="حذف عضو" data-remove-project-member="${Number(member.id)}">×</button>` : ''}</span>`).join('') || '<em>عضوی انتخاب نشده است.</em>'}</div>${state.capabilities.projects_manage ? `<form data-project-member="${Number(project.id)}" class="tf-inline-form"><select name="user_id" required>${(state.reference.users || []).filter(user => user.status === 'active').map(user => `<option value="${Number(user.id)}">${esc(user.name)}</option>`).join('')}</select><input name="role_label" placeholder="نقش در این پروژه؛ اختیاری"><button class="tf-button tiny">افزودن عضو</button></form>` : ''}</section>
-            <section class="tf-card tf-stages"><div class="tf-card-head"><div><h2>۲. مراحل و پیش‌نیازها</h2><p>مرحله‌های بدون پیش‌نیاز هم‌زمان شروع می‌شوند؛ بقیه خودکار منتظر می‌مانند.</p></div></div><div class="tf-stage-flow">${(project.steps || []).map((stage, index) => { const dependencies = String(stage.dependency_ids || '').split(',').filter(Boolean).map(id => stageNames[Number(id)] || `#${id}`); return `<article class="tf-stage status-${esc(stage.status)}"><header><span>${(index + 1).toLocaleString('fa-IR')}</span>${statusBadge(stage.status)}</header><h3>${esc(stage.name)}</h3><p>${esc(stage.task_type_name)}</p><div class="tf-dependency">${dependencies.length ? `پیش‌نیاز: ${esc(dependencies.join('، '))}` : 'بدون پیش‌نیاز؛ شروع هم‌زمان'}</div>${stage.task_id ? `<div class="tf-stage-task"><strong>${esc(stage.assignee_names || 'بدون مسئول')}</strong>${statusBadge(stage.task_status)}</div><button class="tf-link" data-task-open="${Number(stage.task_id)}">جزئیات و تغییر مسئول</button>` : '<div class="tf-stage-task muted">تسک هنوز ساخته نشده</div>'}${state.capabilities.projects_manage && !['completed', 'disabled'].includes(stage.status) ? `<div class="tf-stage-actions"><button data-edit-project-dependencies="${Number(stage.id)}">ویرایش پیش‌نیاز</button><button class="danger-text" data-disable-project-stage="${Number(stage.id)}">غیرفعال‌کردن</button></div>` : ''}</article>`; }).join('') || '<div class="tf-empty span-all"><strong>مرحله‌ها پس از شروع پروژه ساخته می‌شوند</strong><p>قبل از شروع، قالب و اعضای پروژه را بررسی کن.</p></div>'}</div></section>
-            <section class="tf-card tf-attachments"><div class="tf-card-head"><div><h2>۳. تصاویر و پیوست‌ها</h2><p>تصاویر مربوط به همین پروژه</p></div></div><div class="tf-attachment-grid">${(project.attachments || []).map(item => `<a href="${esc(fileUrl(item.path))}" target="_blank"><img src="${esc(fileUrl(item.path))}" alt="${esc(item.caption || item.original_name || 'پیوست پروژه')}"><span>${esc(item.caption || item.original_name || 'تصویر')}</span></a>`).join('') || '<div class="tf-empty small">هنوز تصویری اضافه نشده است.</div>'}</div>${state.capabilities.projects_manage ? `<form class="tf-inline-form tf-upload" data-project-attachment="${Number(project.id)}" enctype="multipart/form-data"><input type="file" name="image" accept="image/jpeg,image/png,image/webp" required><input name="caption" placeholder="توضیح تصویر؛ اختیاری"><button class="tf-button tiny">آپلود تصویر</button></form>` : ''}</section>
+            <div class="tf-project-toolbar">${archived ? '<span class="tf-status status-disabled">آرشیوشده</span>' : statusBadge(project.status)}${actions}${state.capabilities.system_admin ? `<button class="tf-button danger push" data-delete-project="${Number(project.id)}">حذف پروژه</button>` : ''}</div>
+            <section class="tf-card tf-members"><div class="tf-card-head"><div><h2>۱. اعضای پروژه</h2><p>تسک‌های مراحل فقط بین افراد این پروژه توزیع می‌شوند.</p></div></div><div class="tf-member-pills">${(project.members || []).map(member => `<span><i>${esc(String(member.name).slice(0, 1))}</i>${esc(member.name)}<small>${esc(member.role_label || '')}</small>${state.capabilities.projects_manage && !archived ? `<button title="حذف عضو" data-remove-project-member="${Number(member.id)}">×</button>` : ''}</span>`).join('') || '<em>عضوی انتخاب نشده است.</em>'}</div>${state.capabilities.projects_manage && !archived ? `<form data-project-member="${Number(project.id)}" class="tf-inline-form"><select name="user_id" required>${(state.reference.users || []).filter(user => user.status === 'active').map(user => `<option value="${Number(user.id)}">${esc(user.name)}</option>`).join('')}</select><input name="role_label" placeholder="نقش در این پروژه؛ اختیاری"><button class="tf-button tiny">افزودن عضو</button></form>` : ''}</section>
+            <section class="tf-card tf-stages"><div class="tf-card-head"><div><h2>۲. مراحل و پیش‌نیازها</h2><p>وظیفه خودت را بدون خروج از پروژه شروع، گزارش یا تکمیل کن.</p></div></div><div class="tf-stage-flow">${(project.steps || []).map((stage, index) => { const dependencies = String(stage.dependency_ids || '').split(',').filter(Boolean).map(id => stageNames[Number(id)] || `#${id}`); return `<article class="tf-stage status-${esc(stage.status)}"><header><span>${(index + 1).toLocaleString('fa-IR')}</span>${statusBadge(stage.status)}</header><h3>${esc(stage.name)}</h3><p>${esc(stage.task_type_name)}</p><div class="tf-dependency">${dependencies.length ? `پیش‌نیاز: ${esc(dependencies.join('، '))}` : 'بدون پیش‌نیاز؛ شروع هم‌زمان'}</div>${stage.task_id ? `<div class="tf-stage-task"><strong>${esc(stage.assignee_names || 'بدون مسئول')}</strong>${statusBadge(stage.task_status)}</div><div class="tf-stage-work-actions">${stageTaskActions(stage, archived)}</div>` : '<div class="tf-stage-task muted">تسک هنوز ساخته نشده</div>'}${state.capabilities.projects_manage && !archived && !['completed', 'disabled'].includes(stage.status) ? `<div class="tf-stage-actions"><button data-edit-project-dependencies="${Number(stage.id)}">ویرایش پیش‌نیاز</button><button class="danger-text" data-disable-project-stage="${Number(stage.id)}">غیرفعال‌کردن</button></div>` : ''}</article>`; }).join('') || '<div class="tf-empty span-all"><strong>مرحله‌ها پس از شروع پروژه ساخته می‌شوند</strong><p>قبل از شروع، قالب و اعضای پروژه را بررسی کن.</p></div>'}</div></section>
+            <section class="tf-card tf-attachments"><div class="tf-card-head"><div><h2>۳. تصاویر و پیوست‌ها</h2><p>تصاویر مربوط به همین پروژه</p></div></div><div class="tf-attachment-grid">${(project.attachments || []).map(item => `<a href="${esc(fileUrl(item.path))}" target="_blank"><img src="${esc(fileUrl(item.path))}" alt="${esc(item.caption || item.original_name || 'پیوست پروژه')}"><span>${esc(item.caption || item.original_name || 'تصویر')}</span></a>`).join('') || '<div class="tf-empty small">هنوز تصویری اضافه نشده است.</div>'}</div>${state.capabilities.projects_manage && !archived ? `<form class="tf-inline-form tf-upload" data-project-attachment="${Number(project.id)}" enctype="multipart/form-data"><input type="file" name="image" accept="image/jpeg,image/png,image/webp" required><input name="caption" placeholder="توضیح تصویر؛ اختیاری"><button class="tf-button tiny">آپلود تصویر</button></form>` : ''}</section>
             <section class="tf-card"><div class="tf-card-head"><div><h2>۴. تاریخچه پروژه</h2><p>چه کاری، توسط چه کسی و چه زمانی انجام شده است.</p></div></div><div class="tf-timeline">${(project.history || []).map(item => `<article><i></i><div><strong>${esc(item.message)}</strong><small>${esc(item.actor_name || 'سیستم')} · ${esc(item.created_at)}</small></div></article>`).join('') || '<div class="tf-empty small">رویدادی ثبت نشده.</div>'}</div></section>`;
     }
 
@@ -278,8 +314,8 @@
         const users = root.querySelector('[data-user-list]');
         const roles = root.querySelector('[data-role-list]');
         if (teams) teams.innerHTML = (state.reference.teams || []).map(team => `<article><i>♟</i><span><strong>${esc(team.name)} · ${Number(team.member_count || 0).toLocaleString('fa-IR')} نفر</strong><small>${esc(team.member_names || team.description || 'هنوز عضوی ندارد')}</small></span>${statusBadge(Number(team.is_active) ? 'active' : 'disabled')}</article>`).join('') || '<div class="tf-empty small">گروهی وجود ندارد.</div>';
-        if (users) users.innerHTML = (state.reference.users || []).map(user => `<article><i>${esc(String(user.name).slice(0, 1))}</i><span><strong>${esc(user.name)}</strong><small>${esc(user.email)} · ${esc(user.role_names || 'بدون نقش')}</small></span>${state.capabilities.users_manage ? `<form data-user-role="${Number(user.id)}"><select name="role_id">${(state.reference.roles || []).filter(role => Number(role.is_active)).map(role => `<option value="${Number(role.id)}" ${numericIds(user.role_ids).includes(Number(role.id)) ? 'selected' : ''}>${esc(role.display_name)}</option>`).join('')}</select><button>ذخیره نقش</button></form>` : statusBadge(user.status)}</article>`).join('') || '<div class="tf-empty small">کاربری وجود ندارد.</div>';
-        if (roles) roles.innerHTML = (state.reference.roles || []).map(role => `<article><i>◎</i><span><strong>${esc(role.display_name)}</strong><small>${esc(role.key_name)}</small></span>${statusBadge(Number(role.is_active) ? 'active' : 'disabled')}</article>`).join('');
+        if (users) users.innerHTML = (state.reference.users || []).map(user => `<article><i>${esc(String(user.name).slice(0, 1))}</i><span><strong>${esc(user.name)}</strong><small>${esc(user.email)} · ${esc(user.role_names || 'بدون نقش')}</small><small>${Number(user.open_task_count || 0).toLocaleString('fa-IR')} تسک باز · آخرین ورود ${esc(user.last_login_at || 'ثبت نشده')}</small></span>${statusBadge(user.status)}${state.capabilities.users_manage ? `<button class="tf-link" data-edit-user="${Number(user.id)}">مدیریت</button>` : ''}</article>`).join('') || '<div class="tf-empty small">کاربری وجود ندارد.</div>';
+        if (roles) roles.innerHTML = (state.reference.roles || []).map(role => { const protectedRole = ['admin', 'manager', 'user'].includes(role.key_name); const details = state.capabilities.roles_manage ? `<small>${Number(role.user_count || 0).toLocaleString('fa-IR')} کاربر · ${esc(role.permission_keys ? String(role.permission_keys).split(',').map(key => permissionLabels[key] || key).join('، ') : 'بدون دسترسی')}</small>${role.user_names ? `<small>کاربران: ${esc(role.user_names)}</small>` : ''}` : '<small>نقش فعال قابل تخصیص به کاربران</small>'; return `<article><i>◎</i><span><strong>${esc(role.display_name)}</strong><small>${esc(role.key_name)}</small>${details}</span>${statusBadge(Number(role.is_active) ? 'active' : 'disabled')}${state.capabilities.roles_manage ? `<div class="tf-actions"><button data-edit-role="${Number(role.id)}">ویرایش</button><button data-clone-role="${Number(role.id)}">کپی</button>${protectedRole ? '' : `<button class="danger-text" data-delete-role="${Number(role.id)}">حذف</button>`}</div>` : ''}</article>`; }).join('') || '<div class="tf-empty small">نقشی وجود ندارد.</div>';
     }
 
     function renderNotifications() {
@@ -295,13 +331,45 @@
         const task = state.selectedTask = payload.task;
         const assigneeIds = (task.assignees || []).map(user => Number(user.id));
         const canManage = state.capabilities.tasks_manage;
-        const editable = canManage && Number(task.is_standalone) === 1 && !['completed', 'cancelled'].includes(task.status);
+        const canWork = Number(task.can_work) === 1;
+        const taskArchived = Boolean(task.archived_at);
+        const readOnly = taskArchived || Boolean(task.project_archived_at);
+        const editable = canManage && !readOnly && Number(task.is_standalone) === 1 && !['completed', 'cancelled'].includes(task.status);
         target.innerHTML = `<header><div><span class="tf-type" style="--type-color:${esc(task.task_type_color)}">${esc(task.task_type_name)}</span><h2>${esc(task.title)}</h2><p>${Number(task.is_standalone) ? 'تسک مستقل' : `پروژه: ${esc(task.order_title)}`}</p></div><button type="button" data-close-modal>×</button></header>
-            <div class="tf-task-summary">${statusBadge(task.status)}<span>موعد: ${esc(task.due_at ? String(task.due_at).slice(0, 16) : 'ندارد')}</span><span>مسئولان: ${esc((task.assignees || []).map(user => user.name).join('، ') || 'تعیین نشده')}</span></div>
+            <div class="tf-task-summary">${statusBadge(task.status)}${readOnly ? '<span class="tf-status status-disabled">فقط‌خواندنی / آرشیوشده</span>' : ''}<span>موعد: ${esc(task.due_at ? String(task.due_at).slice(0, 16) : 'ندارد')}</span><span>مسئولان: ${esc((task.assignees || []).map(user => user.name).join('، ') || 'تعیین نشده')}</span></div>
             ${editable ? `<form class="tf-form-grid tf-subform" data-edit-task><input type="hidden" name="task_id" value="${Number(task.id)}"><label class="span-2">عنوان<input name="title" required value="${esc(task.title)}"></label><label>نوع<select name="task_type_id">${(state.reference.task_types || []).filter(item => Number(item.is_active)).map(item => `<option value="${Number(item.id)}" ${Number(item.id) === Number(task.task_type_id) ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label><label>موعد<input type="datetime-local" name="due_at" value="${esc(dateTimeValue(task.due_at))}"></label><label class="span-2">توضیحات<textarea name="description">${esc(task.description || '')}</textarea></label><button class="tf-button secondary span-2">ذخیره مشخصات تسک</button></form>` : `<p class="tf-task-description">${esc(task.description || 'توضیحی ثبت نشده است.')}</p>`}
-            ${canManage && !['completed', 'cancelled'].includes(task.status) ? `<form class="tf-assignment-box" data-task-assignees><input type="hidden" name="task_id" value="${Number(task.id)}"><label><strong>تغییر مسئولان</strong><small>${task.order_id ? 'فقط اعضای فعال همین پروژه؛' : 'یک یا چند کاربر فعال؛'} انجام توسط یک نفر کافی است.</small><select name="user_ids" multiple required>${(task.eligible_assignees || []).map(user => `<option value="${Number(user.id)}" ${assigneeIds.includes(Number(user.id)) ? 'selected' : ''}>${esc(user.name)} — ${esc(user.email)}</option>`).join('')}</select></label><button class="tf-button">ذخیره مسئولان</button></form>` : ''}
+            ${canManage && !readOnly && !['completed', 'cancelled'].includes(task.status) ? `<form class="tf-assignment-box" data-task-assignees><input type="hidden" name="task_id" value="${Number(task.id)}"><label><strong>تغییر مسئولان</strong><small>${task.order_id ? 'فقط اعضای فعال همین پروژه؛' : 'یک یا چند کاربر فعال؛'} انجام توسط یک نفر کافی است.</small><select name="user_ids" multiple required>${(task.eligible_assignees || []).map(user => `<option value="${Number(user.id)}" ${assigneeIds.includes(Number(user.id)) ? 'selected' : ''}>${esc(user.name)} — ${esc(user.email)}</option>`).join('')}</select></label><button class="tf-button">ذخیره مسئولان</button></form>` : ''}
             <section class="tf-report-list"><h3>گزارش‌های انجام کار</h3>${(task.reports || []).map(report => `<article><strong>${esc(report.user_name)}</strong><p>${esc(report.report_text)}</p><small>${esc(report.created_at)}</small></article>`).join('') || '<p class="tf-muted">هنوز گزارشی ثبت نشده است.</p>'}</section>
-            <footer>${task.status === 'open' ? `<button class="tf-button secondary" data-task-start="${Number(task.id)}">شروع</button>` : ''}${['open', 'in_progress'].includes(task.status) ? `<button class="tf-button secondary" data-task-report="${Number(task.id)}">ثبت گزارش</button><button class="tf-button" data-task-complete="${Number(task.id)}">تکمیل تسک</button>` : ''}${canManage && Number(task.is_standalone) ? `<button class="tf-button danger push" data-delete-task="${Number(task.id)}">حذف تسک مستقل</button>` : ''}</footer>`;
+            <footer>${canWork && !readOnly && task.status === 'open' ? `<button class="tf-button secondary" data-task-start="${Number(task.id)}">شروع</button>` : ''}${canWork && !readOnly && task.status === 'in_progress' ? `<button class="tf-button secondary" data-task-report="${Number(task.id)}">ثبت گزارش</button><button class="tf-button" data-task-complete="${Number(task.id)}">تکمیل تسک</button>` : ''}${canManage && !readOnly && task.status === 'completed' ? `<button class="tf-button secondary" data-task-archive="${Number(task.id)}">آرشیو وظیفه</button>` : ''}${canManage && taskArchived && !task.project_archived_at ? `<button class="tf-button" data-task-restore="${Number(task.id)}">بازگردانی از آرشیو</button>` : ''}${canManage && !readOnly && Number(task.is_standalone) ? `<button class="tf-button danger push" data-delete-task="${Number(task.id)}">حذف تسک مستقل</button>` : ''}</footer>`;
+    }
+
+    function prepareUser(user) {
+        const form = root.querySelector('[data-edit-user]'); resetModalForm(form); fillOptions(form);
+        setForm(form, { ...user, user_id: user.id, role_ids: numericIds(user.role_ids) });
+        root.querySelector('[data-user-edit-summary]').textContent = user.email;
+        root.querySelector('[data-user-last-login]').textContent = user.last_login_at || 'ثبت نشده';
+        root.querySelector('[data-user-teams]').textContent = user.team_names || 'عضو تیمی نیست';
+        root.querySelector('[data-user-projects]').textContent = user.project_names || 'عضو پروژه‌ای نیست';
+        root.querySelector('[data-user-open-tasks]').textContent = Number(user.open_task_count || 0).toLocaleString('fa-IR');
+        openModal('user-edit');
+    }
+
+    function prepareRole(role = null, clone = false) {
+        const form = root.querySelector('[data-save-role]'); resetModalForm(form); fillOptions(form);
+        [...form.elements.permissions.options].forEach(option => { option.disabled = false; });
+        form.elements.is_active.checked = true;
+        form.elements.is_active.disabled = false;
+        form.elements.key_name.disabled = Boolean(role) && !clone;
+        root.querySelector('[data-role-modal-title]').textContent = clone ? 'کپی نقش' : (role ? 'ویرایش نقش' : 'تعریف نقش جدید');
+        root.querySelector('[data-role-modal-help]').textContent = clone ? 'یک کلید تازه وارد کن؛ دسترسی‌ها از نقش مبدأ کپی شده‌اند.' : 'دسترسی‌های نقش و وضعیت استفاده آن را مدیریت کن.';
+        if (role) setForm(form, { role_id: clone ? '' : role.id, key_name: clone ? '' : role.key_name, display_name: clone ? `${role.display_name} - کپی` : role.display_name, permissions: String(role.permission_keys || '').split(',').filter(Boolean), is_active: clone ? 1 : role.is_active });
+        if (role && !clone && ['admin', 'manager', 'user'].includes(role.key_name)) form.elements.is_active.disabled = true;
+        if (role && !clone && role.key_name === 'admin') {
+            const fullAccess = [...form.elements.permissions.options].find(option => option.value === 'system.admin');
+            if (fullAccess) { fullAccess.selected = true; fullAccess.disabled = true; }
+        }
+        if (clone) form.dataset.cloneFrom = String(role.id); else delete form.dataset.cloneFrom;
+        openModal('role');
     }
 
     function prepareTaskType(item = null) {
@@ -343,7 +411,7 @@
 
     async function refreshAll() {
         await loadReference();
-        await Promise.all([loadOverview(), loadProjects(), loadTasks(), loadTemplates(), loadNotifications()]);
+        await Promise.all([loadOverview(), loadProjects(), loadTasks(), loadArchives(), loadTemplates(), loadNotifications()]);
     }
 
     root.addEventListener('click', async event => {
@@ -362,8 +430,8 @@
         if (event.target.closest('[data-open-task-type]')) { prepareTaskType(); return; }
         if (event.target.closest('[data-open-customer]')) { prepareCustomer(); return; }
         if (event.target.closest('[data-open-team]')) { const form = root.querySelector('[data-create-team]'); resetModalForm(form); openModal('team'); return; }
-        if (event.target.closest('[data-open-user]')) { const form = root.querySelector('[data-create-user]'); resetModalForm(form); openModal('user'); return; }
-        if (event.target.closest('[data-open-role]')) { const form = root.querySelector('[data-create-role]'); resetModalForm(form); fillOptions(form); openModal('role'); return; }
+        if (event.target.closest('[data-open-user]')) { const form = root.querySelector('[data-create-user]'); resetModalForm(form); fillOptions(form); openModal('user'); return; }
+        if (event.target.closest('[data-open-role]')) { prepareRole(); return; }
 
         const projectLink = event.target.closest('[data-project-open]');
         if (projectLink) { await showProject(projectLink.dataset.projectOpen).catch(error => toast(error.message, 'error')); return; }
@@ -382,6 +450,12 @@
         if (addTemplateStage) { prepareStage(state.templates.find(item => Number(item.id) === Number(addTemplateStage.dataset.openTemplateStage))); return; }
         const editTemplateStage = event.target.closest('[data-edit-template-stage]');
         if (editTemplateStage) { const template = state.selectedTemplate; prepareStage(template, template.steps.find(item => Number(item.id) === Number(editTemplateStage.dataset.editTemplateStage))); return; }
+        const editUser = event.target.closest('[data-edit-user]');
+        if (editUser) { const user = state.reference.users.find(item => Number(item.id) === Number(editUser.dataset.editUser)); if (user) prepareUser(user); return; }
+        const editRole = event.target.closest('[data-edit-role]');
+        if (editRole) { const role = state.reference.roles.find(item => Number(item.id) === Number(editRole.dataset.editRole)); if (role) prepareRole(role); return; }
+        const cloneRole = event.target.closest('[data-clone-role]');
+        if (cloneRole) { const role = state.reference.roles.find(item => Number(item.id) === Number(cloneRole.dataset.cloneRole)); if (role) prepareRole(role, true); return; }
 
         const editProject = event.target.closest('[data-edit-project]');
         if (editProject && state.selectedProject) {
@@ -415,25 +489,47 @@
             openModal('project-dependencies'); return;
         }
 
-        const action = event.target.closest('[data-task-start],[data-task-report],[data-task-complete],[data-delete-task],[data-project-activate],[data-remove-project-member],[data-disable-project-stage],[data-disable-template-stage],[data-delete-project],[data-delete-template],[data-delete-task-type],[data-delete-customer],[data-wipe-workspace],[data-read-notifications],[data-refresh]');
+        const action = event.target.closest('[data-task-start],[data-task-report],[data-task-complete],[data-task-archive],[data-task-restore],[data-delete-task],[data-project-activate],[data-project-archive],[data-project-restore],[data-remove-project-member],[data-disable-project-stage],[data-disable-template-stage],[data-delete-project],[data-delete-template],[data-delete-task-type],[data-delete-customer],[data-delete-role],[data-wipe-workspace],[data-read-notifications],[data-refresh]');
         if (!action) return;
         action.disabled = true;
         try {
             if (action.matches('[data-refresh]')) await refreshAll();
             else if (action.matches('[data-read-notifications]')) { await api('notifications/read', { method: 'POST' }); await Promise.all([loadNotifications(), loadOverview()]); }
-            else if (action.dataset.taskStart) { await api(`tasks/${action.dataset.taskStart}/start`, { method: 'POST' }); await Promise.all([loadTasks(), loadOverview()]); if (action.closest('dialog')) await showTask(action.dataset.taskStart); }
+            else if (action.dataset.taskStart) {
+                const projectContext = Boolean(action.closest('[data-project-detail]'));
+                await api(`tasks/${action.dataset.taskStart}/start`, { method: 'POST' });
+                await Promise.all([loadTasks(), loadOverview()]);
+                if (action.closest('dialog')) await showTask(action.dataset.taskStart);
+                else if (projectContext && state.selectedProject) await showProject(state.selectedProject.id);
+            }
             else if (action.dataset.taskReport) {
+                const projectContext = Boolean(action.closest('[data-project-detail]'));
                 const report = await window.AppModal.prompt('گزارش انجام‌شده برای این وظیفه در تاریخچه ذخیره می‌شود.', { title: 'ثبت گزارش کار', inputLabel: 'متن گزارش', placeholder: 'چه کاری انجام شد؟', required: true, confirmText: 'ثبت گزارش', icon: '✎' });
                 if (report === null) return;
                 await api(`tasks/${action.dataset.taskReport}/reports`, { method: 'POST', body: { report_text: report } });
-                await showTask(action.dataset.taskReport);
+                await loadTasks();
+                if (action.closest('dialog')) await showTask(action.dataset.taskReport);
+                else if (projectContext && state.selectedProject) await showProject(state.selectedProject.id);
             }
             else if (action.dataset.taskComplete) {
+                const projectContext = Boolean(action.closest('[data-project-detail]'));
                 const report = await window.AppModal.prompt('در صورت نیاز گزارش نهایی را بنویس؛ ثبت گزارش برای تکمیل تسک اختیاری است.', { title: 'تکمیل وظیفه', inputLabel: 'گزارش نهایی (اختیاری)', placeholder: 'خلاصه نتیجه کار…', confirmText: 'تکمیل تسک', icon: '✓' });
                 if (report === null) return;
                 await api(`tasks/${action.dataset.taskComplete}/complete`, { method: 'POST', body: { report_text: report } });
                 await Promise.all([loadTasks(), loadProjects(), loadOverview(), loadNotifications()]);
                 if (action.closest('dialog')) await showTask(action.dataset.taskComplete);
+                else if (projectContext && state.selectedProject) await showProject(state.selectedProject.id);
+            }
+            else if (action.dataset.taskArchive) {
+                if (!await window.AppModal.confirm('وظیفه از برد و فهرست انجام‌شده‌ها کنار می‌رود؛ گزارش‌ها و تاریخچه آن حفظ می‌شوند.', { title: 'آرشیو وظیفه', confirmText: 'انتقال به آرشیو', icon: '◇' })) return;
+                await api(`tasks/${action.dataset.taskArchive}/archive`, { method: 'POST' });
+                if (action.closest('dialog')) closeModal(action);
+                await Promise.all([loadTasks(), loadArchives(), loadOverview()]);
+            }
+            else if (action.dataset.taskRestore) {
+                await api(`tasks/${action.dataset.taskRestore}/restore`, { method: 'POST' });
+                if (action.closest('dialog')) closeModal(action);
+                await Promise.all([loadTasks(), loadArchives(), loadOverview()]);
             }
             else if (action.dataset.deleteTask) {
                 if (!await window.AppModal.confirm('این تسک مستقل همراه تمام گزارش‌های آن برای همیشه حذف می‌شود.', { title: 'حذف تسک مستقل', confirmText: 'حذف تسک', tone: 'danger' })) return;
@@ -446,6 +542,19 @@
                 await api(`projects/${action.dataset.projectActivate}/activate`, { method: 'POST' });
                 await Promise.all([loadProjects(), loadTasks(), loadOverview(), loadNotifications()]);
                 await showProject(action.dataset.projectActivate);
+            }
+            else if (action.dataset.projectArchive) {
+                if (!await window.AppModal.confirm('پروژه از داشبورد و فهرست اصلی کنار می‌رود؛ تمام مراحل، وظایف، گزارش‌ها، تصاویر و تاریخچه حفظ می‌شوند.', { title: 'آرشیو پروژه تکمیل‌شده', confirmText: 'انتقال به آرشیو', icon: '◇' })) return;
+                await api(`projects/${action.dataset.projectArchive}/archive`, { method: 'POST' });
+                state.selectedProject = null;
+                await Promise.all([loadProjects(), loadTasks(), loadArchives(), loadOverview()]);
+                go('archives');
+            }
+            else if (action.dataset.projectRestore) {
+                const projectId = action.dataset.projectRestore;
+                await api(`projects/${projectId}/restore`, { method: 'POST' });
+                await Promise.all([loadProjects(), loadTasks(), loadArchives(), loadOverview()]);
+                await showProject(projectId);
             }
             else if (action.dataset.removeProjectMember) {
                 if (!await window.AppModal.confirm('اگر این عضو تسک بازی داشته باشد، ابتدا باید مسئول آن تسک را تغییر بدهی.', { title: 'حذف عضو از پروژه', confirmText: 'حذف عضو', tone: 'danger' })) return;
@@ -488,6 +597,11 @@
                 await api(`customers/${action.dataset.deleteCustomer}/delete`, { method: 'POST' });
                 await loadReference();
             }
+            else if (action.dataset.deleteRole) {
+                if (!await window.AppModal.confirm('نقش فقط وقتی حذف می‌شود که هیچ کاربر یا مرحله قالبی به آن متصل نباشد.', { title: 'حذف نقش', confirmText: 'حذف نقش', tone: 'danger' })) return;
+                await api(`roles/${action.dataset.deleteRole}/delete`, { method: 'POST' });
+                await loadReference();
+            }
             else if (action.matches('[data-wipe-workspace]')) {
                 const confirmation = await window.AppModal.prompt('پروژه‌ها، تسک‌ها، قالب‌ها، انواع وظیفه، تیم‌ها، مشتری‌ها و اعلان‌ها پاک می‌شوند. کاربران و دسترسی‌ها باقی می‌مانند.', { title: 'پاک‌سازی کامل داده‌های تست', inputLabel: 'برای تأیید عبارت WIPE را وارد کن', placeholder: 'WIPE', required: true, expectedValue: 'WIPE', invalidText: 'عبارت تأیید باید دقیقاً WIPE باشد.', multiline: false, confirmText: 'پاک‌سازی کامل', tone: 'danger' });
                 if (confirmation === null) return;
@@ -524,8 +638,8 @@
             else if (form.matches('[data-create-team]')) { await api('teams', { method: 'POST', body: values(form) }); closeModal(form); await loadReference(); }
             else if (form.matches('[data-team-member]')) { const data = values(form); const id = data.team_id; delete data.team_id; await api(`teams/${id}/members`, { method: 'POST', body: data }); form.reset(); await loadReference(); }
             else if (form.matches('[data-create-user]')) { await api('users', { method: 'POST', body: values(form) }); closeModal(form); await loadReference(); }
-            else if (form.matches('[data-create-role]')) { await api('roles', { method: 'POST', body: values(form) }); closeModal(form); await loadReference(); }
-            else if (form.matches('[data-user-role]')) { await api(`users/${form.dataset.userRole}/roles`, { method: 'POST', body: values(form) }); await loadReference(); }
+            else if (form.matches('[data-edit-user]')) { const data = values(form); const id = data.user_id; delete data.user_id; await api(`users/${id}`, { method: 'POST', body: data }); closeModal(form); await loadReference(); }
+            else if (form.matches('[data-save-role]')) { const data = values(form); const id = data.role_id; const cloneFrom = form.dataset.cloneFrom; delete data.role_id; const path = id ? `roles/${id}` : (cloneFrom ? `roles/${cloneFrom}/clone` : 'roles'); await api(path, { method: 'POST', body: data }); closeModal(form); await loadReference(); }
             else if (form.matches('[data-project-member]')) { const id = form.dataset.projectMember; await api(`projects/${id}/members`, { method: 'POST', body: values(form) }); form.reset(); await Promise.all([loadReference(), loadProjects()]); await showProject(id); }
             else if (form.matches('[data-project-attachment]')) { const id = form.dataset.projectAttachment; await api(`projects/${id}/attachments`, { method: 'POST', body: new FormData(form) }); form.reset(); await showProject(id); }
             toast('اطلاعات ذخیره شد.');
@@ -533,7 +647,7 @@
         finally { if (submit) submit.disabled = false; }
     });
 
-    const allowedViews = ['projects', 'tasks', 'workflows', 'task-types', 'customers', 'teams', 'users', 'guide', 'notifications'];
+    const allowedViews = ['projects', 'tasks', 'archives', 'workflows', 'task-types', 'customers', 'teams', 'users', 'guide', 'notifications'];
     const requestedView = location.hash.replace('#', '');
     if (allowedViews.includes(requestedView)) go(requestedView);
     refreshAll().catch(error => toast(error.message, 'error'));
