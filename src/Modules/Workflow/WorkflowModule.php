@@ -79,7 +79,7 @@ final class WorkflowModule implements Module
         };
 
         $router->get('/api/v1/workflow/overview', $endpoint(static fn () => ['overview' => $repository->overview($actor(), $mayManageProjects($actor()), $mayManageTasks($actor()))]), [$authenticated]);
-        $router->get('/api/v1/workflow/reference', $endpoint(static function () use ($repository, $actor, $allows, $mayManageProjects, $mayManageTasks): array {
+        $router->get('/api/v1/workflow/reference', $endpoint(static function () use ($repository, $actor, $allows, $mayManageProjects, $mayManageTasks, $isSystemAdmin): array {
             $userId = $actor();
             $usersManage = $allows($userId, 'users.manage');
             $rolesManage = $allows($userId, 'roles.manage');
