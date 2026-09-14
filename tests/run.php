@@ -136,6 +136,27 @@ $test('browser-native alerts are replaced by styled application modals', static 
     }
 });
 
+$test('workspace ships a unified responsive interface', static function () use ($assert): void {
+    $layout = file_get_contents(APP_ROOT . '/views/layout.php');
+    $login = file_get_contents(APP_ROOT . '/views/login.php');
+    $workspace = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $stylesheet = file_get_contents(APP_ROOT . '/public/assets/app.css');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $routes = file_get_contents(APP_ROOT . '/src/Module/SystemModule.php');
+    $assert(is_string($layout) && str_contains($layout, '$assetVersion'));
+    $assert(is_string($login) && str_contains($login, 'data-password-toggle'));
+    $assert(str_contains($login, "data-redirect=\"<?= htmlspecialchars(\$to('/workspace')"));
+    $assert(is_string($workspace) && str_contains($workspace, 'class="tf-commandbar"'));
+    $assert(str_contains($workspace, 'class="tf-mobile-nav"'));
+    $assert(str_contains($workspace, 'data-current-view-title'));
+    $assert(substr_count($workspace, 'data-nav-notifications') === 2, 'Notifications must live in the command bar and mobile navigation.');
+    $assert(is_string($stylesheet) && str_contains($stylesheet, 'font-family: Vazirmatn'));
+    $assert(str_contains($stylesheet, '@media (max-width: 760px)'));
+    $assert(is_string($javascript) && str_contains($javascript, 'viewTitles'));
+    $assert(str_contains($javascript, "querySelectorAll('[data-nav-notifications]')"));
+    $assert(is_string($routes) && str_contains($routes, "Response::redirect(\$auth->user() === null ? '/login' : '/workspace')"));
+});
+
 $test('admin wipe preserves accounts and access control', static function () use ($assert): void {
     $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
     $assert(is_string($source) && str_contains($source, 'wipeTestData'));

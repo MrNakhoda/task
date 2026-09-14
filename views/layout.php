@@ -7,6 +7,7 @@ use App\Support\Url;
 
 $pageTitle = isset($pageTitle) && is_string($pageTitle) ? $pageTitle : $appName;
 $currentUser = isset($user) && is_array($user) ? $user : null;
+$assetVersion = static fn (string $path): string => (string) (@filemtime(APP_ROOT . '/public' . $path) ?: '1');
 ?>
 <!doctype html>
 <html lang="<?= htmlspecialchars(Env::get('APP_LOCALE', 'fa') ?? 'fa', ENT_QUOTES, 'UTF-8') ?>" dir="rtl">
@@ -16,8 +17,8 @@ $currentUser = isset($user) && is_array($user) ? $user : null;
     <meta name="color-scheme" content="light">
     <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
     <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
-    <link rel="stylesheet" href="<?= htmlspecialchars(Url::to('/assets/app.css'), ENT_QUOTES, 'UTF-8') ?>">
-    <script defer src="<?= htmlspecialchars(Url::to('/assets/app.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <link rel="stylesheet" href="<?= htmlspecialchars(Url::to('/assets/app.css') . '?v=' . $assetVersion('/assets/app.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <script defer src="<?= htmlspecialchars(Url::to('/assets/app.js') . '?v=' . $assetVersion('/assets/app.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <?php if (isset($pageScript) && is_string($pageScript)): ?>
         <script defer src="<?= htmlspecialchars($pageScript, ENT_QUOTES, 'UTF-8') ?>"></script>
     <?php endif; ?>

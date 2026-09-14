@@ -132,6 +132,17 @@
         });
     });
 
+    document.querySelectorAll('[data-password-toggle]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const input = button.parentElement?.querySelector('input');
+            if (!input) return;
+            const visible = input.type === 'text';
+            input.type = visible ? 'password' : 'text';
+            button.textContent = visible ? 'نمایش' : 'پنهان';
+            button.setAttribute('aria-label', visible ? 'نمایش رمز عبور' : 'پنهان کردن رمز عبور');
+        });
+    });
+
     document.querySelectorAll('[data-logout]').forEach((button) => {
         button.addEventListener('click', async () => {
             button.disabled = true;

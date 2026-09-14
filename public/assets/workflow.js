@@ -6,6 +6,7 @@
 
     const state = { reference: {}, capabilities: {}, projects: [], tasks: [], templates: [], notifications: [], selectedTemplate: null, selectedProject: null, selectedTask: null };
     const labels = { draft: 'پیش‌نویس', active: 'فعال', completed: 'تکمیل‌شده', open: 'آماده شروع', in_progress: 'در حال انجام', pending: 'منتظر پیش‌نیاز', disabled: 'غیرفعال', cancelled: 'لغوشده' };
+    const viewTitles = { dashboard: 'نمای کلی', projects: 'پروژه‌ها', 'project-detail': 'جزئیات پروژه', tasks: 'وظایف', workflows: 'قالب‌های گردش‌کار', 'task-types': 'انواع وظیفه', customers: 'مشتری‌ها', teams: 'تیم‌ها', users: 'کاربران و نقش‌ها', guide: 'راهنمای سیستم', notifications: 'اعلان‌ها' };
     const permissionLabels = { 'system.admin': 'مدیریت کامل سیستم', 'users.manage': 'مدیریت کاربران و نقش‌ها', 'templates.manage': 'مدیریت قالب و نوع وظیفه', 'orders.manage': 'مدیریت پروژه‌ها', 'tasks.manage': 'مدیریت همه تسک‌ها', 'tasks.work': 'انجام تسک‌های تخصیص‌یافته', 'teams.manage': 'مدیریت تیم‌ها', 'orders.read': 'مشاهده پروژه‌ها', 'catalog.manage': 'مدیریت کاتالوگ', 'crm.manage': 'مدیریت مشتری‌ها', 'hr.manage': 'مدیریت منابع انسانی', 'workflow.admin': 'مدیریت کامل گردش‌کار' };
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
     const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
@@ -87,6 +88,7 @@
     function go(view) {
         root.querySelectorAll('[data-view]').forEach(section => section.classList.toggle('is-active', section.dataset.view === view));
         root.querySelectorAll('[data-nav-view]').forEach(button => button.classList.toggle('is-active', button.dataset.navView === view));
+        root.querySelectorAll('[data-current-view-title]').forEach(node => { node.textContent = viewTitles[view] || 'فضای کار'; });
         root.classList.remove('sidebar-open');
         if (view !== 'project-detail') location.hash = view;
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -137,9 +139,11 @@
             const node = root.querySelector(`[data-metric="${key}"]`);
             if (node) node.textContent = Number(value).toLocaleString('fa-IR');
         });
-        const badge = root.querySelector('[data-nav-notifications]');
         const count = Number(payload.overview.notifications_unread || 0);
-        badge.textContent = count ? count.toLocaleString('fa-IR') : '';
+        root.querySelectorAll('[data-nav-notifications]').forEach(badge => {
+            badge.textContent = count ? count.toLocaleString('fa-IR') : '';
+            badge.hidden = count === 0;
+        });
     }
 
     async function loadProjects(query = '') {
@@ -345,7 +349,11 @@
     root.addEventListener('click', async event => {
         const nav = event.target.closest('[data-nav-view],[data-go]');
         if (nav) { go(nav.dataset.navView || nav.dataset.go); return; }
-        if (event.target.closest('[data-sidebar-toggle]')) { root.classList.toggle('sidebar-open'); return; }
+        if (event.target.closest('[data-sidebar-toggle]')) {
+            const open = root.classList.toggle('sidebar-open');
+            root.querySelectorAll('[data-sidebar-toggle]').forEach(button => button.setAttribute('aria-expanded', open ? 'true' : 'false'));
+            return;
+        }
         const close = event.target.closest('[data-close-modal]');
         if (close) { closeModal(close); return; }
         if (event.target.closest('[data-open-project]')) { if (!(state.reference.templates || []).some(item => Number(item.is_active))) { toast('ابتدا یک قالب گردش‌کار بساز.', 'error'); go('workflows'); return; } const form = root.querySelector('[data-create-project]'); resetModalForm(form); fillOptions(form); openModal('project'); return; }
