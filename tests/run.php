@@ -139,6 +139,12 @@ $test('archive, member access, user and role safeguards are wired end to end', s
     $assert(str_contains($view, 'name="role_ids" data-options="roles" multiple'));
     $assert(is_string($javascript) && str_contains($javascript, 'stageTaskActions(stage, archived)'));
     $assert(str_contains($javascript, "api('projects?archived=only')"));
+    $assert(str_contains($view, 'data-user-edit-form'), 'User edit form needs a selector distinct from management buttons.');
+    $assert(!str_contains($view, '<form method="dialog" class="tf-modal-card" data-edit-user>'), 'User edit button selector must not be reused on the form.');
+    $assert(str_contains($view, 'data-role-options') && str_contains($view, 'data-permission-options'), 'Role and permission checkbox management must be visible.');
+    $assert(str_contains($javascript, "root.querySelector('[data-user-edit-form]')"), 'User management must target the actual edit form.');
+    $assert(str_contains($javascript, "form.matches('[data-user-edit-form]')"), 'User edit submissions must use the dedicated form selector.');
+    $assert(str_contains($javascript, 'data-permission-choice') && str_contains($javascript, 'renderEffectivePermissions'), 'Permission selection and effective access preview must be wired.');
 });
 
 $test('workspace exposes business setup, guidance and assignment management', static function () use ($assert): void {
