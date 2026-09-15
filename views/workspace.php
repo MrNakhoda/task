@@ -26,12 +26,12 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
             <button data-nav-view="projects" type="button"><svg><use href="#tf-i-project"/></svg> پروژه‌ها</button>
             <button data-nav-view="tasks" type="button"><svg><use href="#tf-i-task"/></svg> وظایف</button>
             <button data-nav-view="archives" type="button"><svg><use href="#tf-i-flow"/></svg> آرشیوها</button>
-            <div class="tf-nav-label">راه‌اندازی و مدیریت</div>
-            <button data-nav-view="workflows" type="button"><svg><use href="#tf-i-flow"/></svg> قالب گردش‌کار</button>
-            <button data-nav-view="task-types" type="button"><svg><use href="#tf-i-tag"/></svg> انواع وظیفه</button>
-            <button data-nav-view="customers" type="button"><svg><use href="#tf-i-customer"/></svg> مشتری‌ها</button>
-            <button data-nav-view="teams" type="button"><svg><use href="#tf-i-team"/></svg> تیم‌ها</button>
-            <button data-nav-view="users" type="button"><svg><use href="#tf-i-users"/></svg> کاربران و نقش‌ها</button>
+            <div class="tf-nav-label" data-management-nav data-requires-any="templates_manage,projects_manage,teams_manage,users_manage,roles_manage" hidden>راه‌اندازی و مدیریت</div>
+            <button data-nav-view="workflows" data-view-requires="templates_manage" type="button" hidden><svg><use href="#tf-i-flow"/></svg> قالب گردش‌کار</button>
+            <button data-nav-view="task-types" data-view-requires="templates_manage" type="button" hidden><svg><use href="#tf-i-tag"/></svg> انواع وظیفه</button>
+            <button data-nav-view="customers" data-view-requires="projects_manage" type="button" hidden><svg><use href="#tf-i-customer"/></svg> مشتری‌ها</button>
+            <button data-nav-view="teams" data-view-requires="teams_manage" type="button" hidden><svg><use href="#tf-i-team"/></svg> تیم‌ها</button>
+            <button data-nav-view="users" data-view-requires="users_manage,roles_manage" type="button" hidden><svg><use href="#tf-i-users"/></svg> کاربران و نقش‌ها</button>
             <div class="tf-nav-label">پشتیبانی</div>
             <button data-nav-view="guide" type="button"><svg><use href="#tf-i-help"/></svg> راهنمای کار با سیستم</button>
         </nav>
@@ -56,7 +56,7 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
 
         <section class="tf-view is-active" data-view="dashboard">
             <div class="tf-page-head"><div><span>مرکز کار</span><h1>امروز چه کاری داریم؟</h1><p>پروژه‌های مرحله‌ای و کارهای مستقل را از اینجا کنترل کن.</p></div><div class="tf-head-actions"><button class="tf-button secondary" type="button" data-open-quick-task data-requires="tasks_manage" hidden>+ تسک مستقل</button><button class="tf-button" type="button" data-open-project data-requires="projects_manage" hidden>+ پروژه جدید</button></div></div>
-            <section class="tf-setup-card" data-setup-checklist></section>
+            <section class="tf-setup-card" data-setup-checklist hidden></section>
             <div class="tf-metrics">
                 <article><i class="blue">▣</i><div><span>پروژه‌های فعال</span><strong data-metric="orders_active">—</strong></div></article>
                 <article><i class="orange">✓</i><div><span>وظایف باز</span><strong data-metric="tasks_open">—</strong></div></article>
@@ -79,9 +79,9 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
         <section class="tf-view" data-view="project-detail"><button class="tf-back" type="button" data-go="projects">→ بازگشت به پروژه‌ها</button><div data-project-detail><div class="tf-loading">در حال دریافت پروژه…</div></div></section>
 
         <section class="tf-view" data-view="tasks">
-            <div class="tf-page-head"><div><span>کارهای اجرایی</span><h1>وظایف</h1><p>برد اصلی فقط کارهای باز را نشان می‌دهد؛ انجام‌شده‌ها از فیلتر در دسترس‌اند.</p></div><div class="tf-head-actions"><button class="tf-button secondary" type="button" data-go="archives">آرشیو وظایف</button><button class="tf-button" type="button" data-open-quick-task data-requires="tasks_manage" hidden>+ تسک مستقل</button></div></div>
+            <div class="tf-page-head"><div><span>کارهای اجرایی</span><h1>وظایف</h1><p>وظایف آماده، در حال انجام و تکمیل‌شده تا زمان آرشیو در همین برد باقی می‌مانند.</p></div><div class="tf-head-actions"><button class="tf-button secondary" type="button" data-go="archives">آرشیو وظایف</button><button class="tf-button" type="button" data-open-quick-task data-requires="tasks_manage" hidden>+ تسک مستقل</button></div></div>
             <div class="tf-context-help"><b>دو نوع تسک داریم</b><span>تسک پروژه‌ای از مرحله پروژه ساخته می‌شود؛ تسک مستقل مثل «خرید سنگ» بدون پروژه ساخته می‌شود. در تخصیص چندنفره، تأیید یک نفر کافی است.</span></div>
-            <form class="tf-filters task-filters" data-task-filters><select name="status"><option value="">کارهای باز</option><option value="open">آماده شروع</option><option value="in_progress">در حال انجام</option><option value="completed">انجام‌شده‌ها</option></select><select name="task_type_id" data-options="task_types"><option value="">همه نوع وظیفه‌ها</option></select><select name="order_id" data-task-project-filter><option value="">همه پروژه‌ها</option></select><input name="customer" placeholder="نام مشتری"><button class="tf-button secondary">فیلتر</button></form>
+            <form class="tf-filters task-filters" data-task-filters><select name="status"><option value="">همه وظایف جاری</option><option value="open">آماده شروع</option><option value="in_progress">در حال انجام</option><option value="completed">انجام‌شده</option></select><select name="task_type_id" data-options="task_types"><option value="">همه نوع وظیفه‌ها</option></select><select name="order_id" data-task-project-filter><option value="">همه پروژه‌ها</option></select><input name="customer" placeholder="نام مشتری"><button class="tf-button secondary">فیلتر</button></form>
             <div class="tf-task-columns" data-task-board></div>
         </section>
 
@@ -93,29 +93,29 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
             </div>
         </section>
 
-        <section class="tf-view" data-view="workflows">
+        <section class="tf-view" data-view="workflows" data-view-requires="templates_manage" hidden>
             <div class="tf-page-head"><div><span>الگوی قابل استفاده مجدد</span><h1>قالب‌های گردش‌کار</h1><p>یک بار مراحل تولید را تعریف کن و برای پروژه‌های بعدی دوباره استفاده کن.</p></div><button class="tf-button" data-open-template data-requires="templates_manage" hidden>+ قالب جدید</button></div>
             <div class="tf-context-help"><b>ترتیب پیشنهادی</b><span>اول نوع وظیفه بساز، بعد قالب را ایجاد کن، سپس مراحل و پیش‌نیاز هر مرحله را مشخص کن. مسئول پیش‌فرض می‌تواند کاربر، تیم یا نقش باشد.</span><button data-go="task-types">مدیریت نوع وظیفه</button></div>
             <div class="tf-workflow-layout"><aside class="tf-card tf-template-list" data-template-list></aside><section class="tf-card tf-template-editor" data-template-editor><div class="tf-empty"><strong>یک قالب را انتخاب کن</strong><p>مراحل، پیش‌نیازها و مسئولان پیش‌فرض اینجا نمایش داده می‌شوند.</p></div></section></div>
         </section>
 
-        <section class="tf-view" data-view="task-types">
+        <section class="tf-view" data-view="task-types" data-view-requires="templates_manage" hidden>
             <div class="tf-page-head"><div><span>دسته‌بندی کار</span><h1>مدیریت انواع وظیفه</h1><p>مثل طراحی، خرید، ریخته‌گری یا کنترل کیفیت؛ این موارد در مراحل و تسک‌ها استفاده می‌شوند.</p></div><button class="tf-button" data-open-task-type data-requires="templates_manage" hidden>+ نوع وظیفه جدید</button></div>
             <div class="tf-context-help"><b>فرق نوع وظیفه با تسک</b><span>«خرید» یک نوع وظیفه است؛ «خرید سنگ پروژه گلوریا» یک تسک واقعی است. نوع وظیفه برای دسته‌بندی و فیلتر است.</span></div>
             <section class="tf-card"><div class="tf-table" data-task-type-list></div></section>
         </section>
 
-        <section class="tf-view" data-view="customers">
+        <section class="tf-view" data-view="customers" data-view-requires="projects_manage" hidden>
             <div class="tf-page-head"><div><span>اطلاعات سفارش‌دهنده</span><h1>مشتری‌ها</h1><p>مشتری را اینجا بساز تا هنگام ساخت پروژه قابل انتخاب باشد.</p></div><button class="tf-button" data-open-customer data-requires="projects_manage" hidden>+ مشتری جدید</button></div>
             <section class="tf-card"><div class="tf-table" data-customer-list></div></section>
         </section>
 
-        <section class="tf-view" data-view="teams">
+        <section class="tf-view" data-view="teams" data-view-requires="teams_manage" hidden>
             <div class="tf-page-head"><div><span>گروه‌بندی شرکت</span><h1>تیم‌ها</h1><p>مثلاً تیم طراحی یا تولید؛ هر کاربر می‌تواند در چند تیم باشد.</p></div><button class="tf-button" data-open-team data-requires="teams_manage" hidden>+ گروه جدید</button></div>
             <div class="tf-split"><section class="tf-card"><div class="tf-card-head"><div><h2>گروه‌ها</h2><p>اعضای هر گروه زیر نام آن دیده می‌شوند</p></div></div><div class="tf-entity-list" data-team-list></div></section><section class="tf-card"><div class="tf-card-head"><div><h2>افزودن عضو به گروه</h2><p>این تیم‌ها در تخصیص مراحل قالب قابل انتخاب‌اند.</p></div></div><form class="tf-form" data-team-member data-requires="teams_manage"><label>گروه<select name="team_id" data-options="teams" required></select></label><label>کاربر<select name="user_id" data-options="users" required></select></label><label class="tf-check"><input type="checkbox" name="is_lead"> سرگروه باشد</label><button class="tf-button">افزودن عضو</button></form></section></div>
         </section>
 
-        <section class="tf-view" data-view="users">
+        <section class="tf-view" data-view="users" data-view-requires="users_manage,roles_manage" hidden>
             <div class="tf-page-head"><div><span>افراد و دسترسی</span><h1>کاربران و نقش‌ها</h1><p>هر کاربر می‌تواند چند نقش داشته باشد؛ حساب‌ها برای حفظ تاریخچه حذف نمی‌شوند.</p></div><div class="tf-head-actions"><button class="tf-button secondary" data-open-role data-requires="roles_manage" hidden>+ نقش جدید</button><button class="tf-button" data-open-user data-requires="users_manage" hidden>+ حساب جدید</button></div></div>
             <div class="tf-context-help"><b>روش صحیح مدیریت دسترسی</b><span>دسترسی‌ها روی «نقش» تنظیم می‌شوند و سپس یک یا چند نقش به کاربر داده می‌شود. برای کم‌وزیادکردن دسترسی، «ویرایش دسترسی‌ها» را روی نقش بزن؛ برای تغییر دسترسی یک فرد، نقش‌های او را از «مدیریت کاربر» تغییر بده.</span></div>
             <div class="tf-split"><section class="tf-card"><div class="tf-card-head"><div><h2>کاربران</h2><p>اطلاعات، نقش‌ها، وضعیت و رمز عبور را مدیریت کن.</p></div></div><div class="tf-user-list" data-user-list></div></section><section class="tf-card"><div class="tf-card-head"><div><h2>نقش‌ها و دسترسی‌ها</h2><p>دسترسی‌های هر نقش را ببین، اضافه یا کم کن و نقش را به کاربران بده.</p></div></div><div class="tf-entity-list tf-role-list" data-role-list></div></section></div>

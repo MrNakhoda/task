@@ -7,7 +7,7 @@
     const state = { reference: {}, capabilities: {}, projects: [], tasks: [], archivedProjects: [], archivedTasks: [], templates: [], notifications: [], selectedTemplate: null, selectedProject: null, selectedTask: null };
     const labels = { draft: 'پیش‌نویس', active: 'فعال', completed: 'تکمیل‌شده', open: 'آماده شروع', in_progress: 'در حال انجام', pending: 'منتظر پیش‌نیاز', disabled: 'غیرفعال', cancelled: 'لغوشده' };
     const viewTitles = { dashboard: 'نمای کلی', projects: 'پروژه‌ها', 'project-detail': 'جزئیات پروژه', tasks: 'وظایف', archives: 'آرشیوها', workflows: 'قالب‌های گردش‌کار', 'task-types': 'انواع وظیفه', customers: 'مشتری‌ها', teams: 'تیم‌ها', users: 'کاربران و نقش‌ها', guide: 'راهنمای سیستم', notifications: 'اعلان‌ها' };
-    const permissionLabels = { 'system.admin': 'مدیریت کامل سیستم', 'users.manage': 'مدیریت کاربران', 'roles.manage': 'مدیریت نقش‌ها و دسترسی‌ها', 'templates.manage': 'مدیریت قالب و نوع وظیفه', 'orders.manage': 'مدیریت پروژه‌ها', 'tasks.manage': 'مدیریت همه تسک‌ها', 'tasks.work': 'انجام تسک‌های تخصیص‌یافته', 'teams.manage': 'مدیریت تیم‌ها', 'orders.read': 'مشاهده پروژه‌ها', 'catalog.manage': 'مدیریت کاتالوگ', 'crm.manage': 'مدیریت مشتری‌ها', 'hr.manage': 'مدیریت منابع انسانی', 'workflow.admin': 'مدیریت کامل گردش‌کار' };
+    const permissionLabels = { 'system.admin': 'مدیریت کامل سیستم', 'users.manage': 'مدیریت کاربران', 'roles.manage': 'مدیریت نقش‌ها و دسترسی‌ها', 'templates.manage': 'مدیریت قالب و نوع وظیفه', 'orders.manage': 'مدیریت همه پروژه‌ها', 'tasks.manage': 'مدیریت همه تسک‌ها', 'tasks.work': 'انجام تسک‌های تخصیص‌یافته', 'teams.manage': 'مدیریت تیم‌ها', 'orders.read': 'مشاهده پروژه‌های عضو', 'catalog.manage': 'مدیریت کاتالوگ', 'crm.manage': 'مدیریت مشتری‌ها', 'hr.manage': 'مدیریت منابع انسانی', 'workflow.admin': 'مدیریت کامل گردش‌کار' };
     const permissionGroups = [
         ['مدیریت سامانه', ['system.admin', 'workflow.admin']],
         ['افراد و ساختار', ['users.manage', 'roles.manage', 'teams.manage']],
@@ -136,12 +136,27 @@
         }).join('');
     }
 
+    function hasAnyCapability(value = '') {
+        return String(value).split(',').map(item => item.trim()).filter(Boolean).some(key => Boolean(state.capabilities[key]));
+    }
+
+    function canView(view) {
+        const section = root.querySelector(`[data-view="${view}"]`);
+        return !section?.dataset.viewRequires || hasAnyCapability(section.dataset.viewRequires);
+    }
+
     function applyCapabilities() {
         root.querySelectorAll('[data-requires]').forEach(element => { element.hidden = !state.capabilities[element.dataset.requires]; });
+        root.querySelectorAll('[data-requires-any]').forEach(element => { element.hidden = !hasAnyCapability(element.dataset.requiresAny); });
+        root.querySelectorAll('[data-view-requires]').forEach(element => { element.hidden = !hasAnyCapability(element.dataset.viewRequires); });
         root.querySelectorAll('[data-admin-only]').forEach(element => { element.hidden = !state.capabilities.system_admin; });
     }
 
-    function go(view) {
+    function go(view, silent = false) {
+        if (!canView(view)) {
+            if (!silent) toast('به این بخش دسترسی ندارید.', 'error');
+            view = 'dashboard';
+        }
         root.querySelectorAll('[data-view]').forEach(section => section.classList.toggle('is-active', section.dataset.view === view));
         root.querySelectorAll('[data-nav-view]').forEach(button => button.classList.toggle('is-active', button.dataset.navView === view));
         root.querySelectorAll('[data-current-view-title]').forEach(node => { node.textContent = viewTitles[view] || 'فضای کار'; });
@@ -242,12 +257,18 @@
     function renderSetup() {
         const box = root.querySelector('[data-setup-checklist]');
         if (!box) return;
-        const items = [
-            ['users', (state.reference.users || []).length > 1, 'کاربران', 'عضوهای شرکت را بساز'],
-            ['task-types', (state.reference.task_types || []).length > 0, 'انواع وظیفه', 'دسته‌های کار را تعریف کن'],
-            ['workflows', state.templates.some(template => Number(template.step_count) > 0), 'قالب گردش‌کار', 'مراحل و پیش‌نیازها را بچین'],
-            ['projects', state.projects.length > 0, 'اولین پروژه', 'قالب و اعضا را روی پروژه اجرا کن'],
-        ];
+        const items = [];
+        if (state.capabilities.users_manage || state.capabilities.roles_manage) items.push(['users', (state.reference.users || []).length > 1, 'کاربران', 'عضوهای شرکت را بساز']);
+        if (state.capabilities.templates_manage) {
+            items.push(['task-types', (state.reference.task_types || []).length > 0, 'انواع وظیفه', 'دسته‌های کار را تعریف کن']);
+            items.push(['workflows', state.templates.some(template => Number(template.step_count) > 0), 'قالب گردش‌کار', 'مراحل و پیش‌نیازها را بچین']);
+        }
+        if (state.capabilities.projects_manage) items.push(['projects', state.projects.length > 0, 'اولین پروژه', 'قالب و اعضا را روی پروژه اجرا کن']);
+        box.hidden = items.length === 0;
+        if (!items.length) {
+            box.innerHTML = '';
+            return;
+        }
         const done = items.filter(item => item[1]).length;
         box.innerHTML = `<header><div><span>شروع سریع</span><strong>${done === items.length ? 'سیستم برای کار آماده است' : `${done.toLocaleString('fa-IR')} از ${items.length.toLocaleString('fa-IR')} مرحله راه‌اندازی انجام شده`}</strong></div><button data-go="guide">راهنمای کامل</button></header><div>${items.map(([view, complete, title, help], index) => `<button class="${complete ? 'done' : ''}" data-go="${view}"><b>${complete ? '✓' : (index + 1).toLocaleString('fa-IR')}</b><span><strong>${title}</strong><small>${help}</small></span></button>`).join('')}</div>`;
     }
@@ -272,11 +293,12 @@
 
     function renderTasks() {
         const board = root.querySelector('[data-task-board]');
-        const columns = [['open', 'آماده شروع'], ['in_progress', 'در حال انجام']];
-        if (state.tasks.some(task => task.status === 'completed')) columns.push(['completed', 'انجام‌شده']);
+        const selectedStatus = root.querySelector('[data-task-filters]')?.elements.status.value || '';
+        const allColumns = [['open', 'آماده شروع'], ['in_progress', 'در حال انجام'], ['completed', 'انجام‌شده']];
+        const columns = selectedStatus ? allColumns.filter(([status]) => status === selectedStatus) : allColumns;
         board.innerHTML = columns.map(([status, title]) => {
             const tasks = state.tasks.filter(task => task.status === status);
-            return `<section class="tf-task-column"><header><h2>${title}</h2><span>${tasks.length.toLocaleString('fa-IR')}</span></header><div>${tasks.map(taskCard).join('') || '<p class="tf-column-empty">موردی نیست</p>'}</div></section>`;
+            return `<section class="tf-task-column" data-task-column="${status}"><header><h2>${title}</h2><span>${tasks.length.toLocaleString('fa-IR')}</span></header><div>${tasks.map(taskCard).join('') || '<p class="tf-column-empty">موردی نیست</p>'}</div></section>`;
         }).join('');
     }
 
@@ -284,7 +306,7 @@
         const projects = root.querySelector('[data-archived-project-list]');
         const tasks = root.querySelector('[data-archived-task-list]');
         if (projects) projects.innerHTML = state.archivedProjects.length ? state.archivedProjects.map(projectCard).join('') : '<div class="tf-empty span-all"><strong>پروژه آرشیوشده‌ای وجود ندارد</strong><p>پروژه تکمیل‌شده را از صفحه جزئیات به آرشیو منتقل کن.</p></div>';
-        if (tasks) tasks.innerHTML = state.archivedTasks.length ? state.archivedTasks.map(taskCard).join('') : '<div class="tf-empty"><strong>وظیفه آرشیوشده‌ای وجود ندارد</strong><p>انجام‌شده‌ها را از فیلتر وظایف پیدا و آرشیو کن.</p></div>';
+        if (tasks) tasks.innerHTML = state.archivedTasks.length ? state.archivedTasks.map(taskCard).join('') : '<div class="tf-empty"><strong>وظیفه آرشیوشده‌ای وجود ندارد</strong><p>وظیفه تکمیل‌شده را از ستون انجام‌شده به آرشیو منتقل کن.</p></div>';
     }
 
     function renderDashboard() {
@@ -460,7 +482,10 @@
 
     async function refreshAll() {
         await loadReference();
-        await Promise.all([loadOverview(), loadProjects(), loadTasks(), loadArchives(), loadTemplates(), loadNotifications()]);
+        if (!state.capabilities.templates_manage) state.templates = [];
+        const requests = [loadOverview(), loadProjects(), loadTasks(), loadArchives(), loadNotifications()];
+        if (state.capabilities.templates_manage) requests.push(loadTemplates());
+        await Promise.all(requests);
     }
 
     root.addEventListener('click', async event => {
@@ -473,8 +498,8 @@
         }
         const close = event.target.closest('[data-close-modal]');
         if (close) { closeModal(close); return; }
-        if (event.target.closest('[data-open-project]')) { if (!(state.reference.templates || []).some(item => Number(item.is_active))) { toast('ابتدا یک قالب گردش‌کار بساز.', 'error'); go('workflows'); return; } const form = root.querySelector('[data-create-project]'); resetModalForm(form); fillOptions(form); openModal('project'); return; }
-        if (event.target.closest('[data-open-quick-task]')) { if (!(state.reference.task_types || []).some(item => Number(item.is_active))) { toast('ابتدا یک نوع وظیفه بساز.', 'error'); go('task-types'); return; } const form = root.querySelector('[data-create-quick-task]'); resetModalForm(form); fillOptions(form); openModal('quick-task'); return; }
+        if (event.target.closest('[data-open-project]')) { if (!(state.reference.templates || []).some(item => Number(item.is_active))) { toast(canView('workflows') ? 'ابتدا یک قالب گردش‌کار بساز.' : 'قالب گردش‌کار فعالی وجود ندارد؛ با مدیر سامانه هماهنگ کنید.', 'error'); if (canView('workflows')) go('workflows'); return; } const form = root.querySelector('[data-create-project]'); resetModalForm(form); fillOptions(form); openModal('project'); return; }
+        if (event.target.closest('[data-open-quick-task]')) { if (!(state.reference.task_types || []).some(item => Number(item.is_active))) { toast(canView('task-types') ? 'ابتدا یک نوع وظیفه بساز.' : 'نوع وظیفه فعالی وجود ندارد؛ با مدیر سامانه هماهنگ کنید.', 'error'); if (canView('task-types')) go('task-types'); return; } const form = root.querySelector('[data-create-quick-task]'); resetModalForm(form); fillOptions(form); openModal('quick-task'); return; }
         if (event.target.closest('[data-open-template]')) { prepareTemplate(); return; }
         if (event.target.closest('[data-open-task-type]')) { prepareTaskType(); return; }
         if (event.target.closest('[data-open-customer]')) { prepareCustomer(); return; }
@@ -570,7 +595,7 @@
                 else if (projectContext && state.selectedProject) await showProject(state.selectedProject.id);
             }
             else if (action.dataset.taskArchive) {
-                if (!await window.AppModal.confirm('وظیفه از برد و فهرست انجام‌شده‌ها کنار می‌رود؛ گزارش‌ها و تاریخچه آن حفظ می‌شوند.', { title: 'آرشیو وظیفه', confirmText: 'انتقال به آرشیو', icon: '◇' })) return;
+                if (!await window.AppModal.confirm('وظیفه از برد اصلی کنار می‌رود؛ گزارش‌ها و تاریخچه آن حفظ می‌شوند.', { title: 'آرشیو وظیفه', confirmText: 'انتقال به آرشیو', icon: '◇' })) return;
                 await api(`tasks/${action.dataset.taskArchive}/archive`, { method: 'POST' });
                 if (action.closest('dialog')) closeModal(action);
                 await Promise.all([loadTasks(), loadArchives(), loadOverview()]);
@@ -702,6 +727,7 @@
 
     const allowedViews = ['projects', 'tasks', 'archives', 'workflows', 'task-types', 'customers', 'teams', 'users', 'guide', 'notifications'];
     const requestedView = location.hash.replace('#', '');
-    if (allowedViews.includes(requestedView)) go(requestedView);
-    refreshAll().catch(error => toast(error.message, 'error'));
+    refreshAll()
+        .then(() => go(allowedViews.includes(requestedView) ? requestedView : 'dashboard', true))
+        .catch(error => toast(error.message, 'error'));
 })();

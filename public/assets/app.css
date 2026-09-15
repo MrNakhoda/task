@@ -392,8 +392,11 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-progress-row b { color: #4d5a72; font-size: 10px; }
 .tf-progress { height: 6px; overflow: hidden; border-radius: 999px; background: #e9edf4; direction: ltr; }
 .tf-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #4969e8, #7d93ef); }
-.tf-task-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; align-items: start; }
+.tf-task-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 13px; align-items: start; }
 .tf-task-column { padding: 12px; border: 1px solid var(--tf-line); border-radius: 14px; background: #edf0f5; }
+.tf-task-column[data-task-column="open"] { border-color: #eee4d8; background: #f3f0ec; }
+.tf-task-column[data-task-column="in_progress"] { border-color: #dce3fa; background: #edf1f8; }
+.tf-task-column[data-task-column="completed"] { border-color: #d8e9e0; background: #edf5f1; }
 .tf-task-column > header { display: flex; align-items: center; justify-content: space-between; padding: 3px 5px 12px; }
 .tf-task-column > header h2 { margin: 0; font-size: 13px; }
 .tf-task-column > header span { display: grid; min-width: 23px; height: 23px; place-items: center; border-radius: 8px; background: #fff; color: #667085; font-size: 10px; }
