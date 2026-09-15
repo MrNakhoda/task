@@ -188,6 +188,7 @@ $test('web push keeps an in-app source of truth and per-device delivery state', 
     $assert(is_string($notifications) && str_contains($notifications, "'notification.web_push'"));
     $assert(is_string($push) && str_contains($push, 'sendOneNotification'));
     $assert(str_contains($push, 'isSubscriptionExpired'));
+    $assert(!str_contains($push, "'topic' =>"), 'Push Topic is optional and must not be sent because Apple rejects non-conforming values.');
     foreach (['/api/v1/pwa/config', '/api/v1/pwa/subscriptions', '/api/v1/pwa/subscriptions/remove', '/api/v1/pwa/test'] as $route) {
         $assert(is_string($module) && str_contains($module, $route), 'Missing PWA route: ' . $route);
     }
