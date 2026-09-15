@@ -182,10 +182,9 @@ $test('web push keeps an in-app source of truth and per-device delivery state', 
     $notifications = file_get_contents(APP_ROOT . '/src/Notification/NotificationService.php');
     $push = file_get_contents(APP_ROOT . '/src/Pwa/WebPushService.php');
     $module = file_get_contents(APP_ROOT . '/src/Pwa/PwaModule.php');
-    foreach (['push_subscriptions', 'push_notification_deliveries'] as $table) {
-        $assert(is_string($coreMigration) && str_contains($coreMigration, '{{prefix}}' . $table));
-    }
-    $assert(is_string($workflowMigration) && str_contains($workflowMigration, 'dedupe_key'));
+    $assert(is_string($coreMigration) && str_contains($coreMigration, '{{prefix}}push_subscriptions'));
+    $assert(is_string($workflowMigration) && str_contains($workflowMigration, '{{prefix}}push_notification_deliveries'));
+    $assert(str_contains($workflowMigration, 'dedupe_key'));
     $assert(is_string($notifications) && str_contains($notifications, "'notification.web_push'"));
     $assert(is_string($push) && str_contains($push, 'sendOneNotification'));
     $assert(str_contains($push, 'isSubscriptionExpired'));
