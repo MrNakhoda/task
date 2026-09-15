@@ -37,7 +37,7 @@ final class NotificationService
             mb_substr(trim($title), 0, 190),
             mb_substr(trim($body), 0, 1000),
             $link !== null ? mb_substr($link, 0, 500) : null,
-            $dedupeKey !== null ? mb_substr($dedupeKey, 0, 190) : null,
+            $dedupeKey !== null ? mb_substr($dedupeKey, 0, 160) : null,
         ]);
         if ($statement->rowCount() !== 1) {
             return null;

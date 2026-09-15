@@ -33,6 +33,16 @@ final class PushSubscriptionRepository
             ->execute([$userId, hash('sha256', $endpoint)]);
     }
 
+    public function revokeEndpoint(string $endpoint): void
+    {
+        if ($endpoint === '' || strlen($endpoint) > 2048) {
+            return;
+        }
+        $table = Table::name('push_subscriptions');
+        Connection::get()->prepare("UPDATE {$table} SET revoked_at=COALESCE(revoked_at,NOW()) WHERE endpoint_hash=?")
+            ->execute([hash('sha256', $endpoint)]);
+    }
+
     public function revokeAll(int $userId): void
     {
         $table = Table::name('push_subscriptions');

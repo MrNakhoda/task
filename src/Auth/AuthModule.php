@@ -51,7 +51,7 @@ final class AuthModule implements Module
             }
         }, [$csrf]);
 
-        $router->post('/api/v1/auth/login', static function (Request $request) use ($auth, $audit): Response {
+        $router->post('/api/v1/auth/login', static function (Request $request) use ($auth, $audit, $pushSubscriptions): Response {
             $rememberInput = $request->input('remember_device', false);
             $remember = in_array($rememberInput, [true, 1, '1', 'true', 'on'], true);
             $user = $auth->attempt(
@@ -62,6 +62,7 @@ final class AuthModule implements Module
             if ($user === null) {
                 return Response::json(['ok' => false, 'error' => 'Email or password is incorrect.'], 401);
             }
+            $pushSubscriptions->revokeEndpoint((string) $request->input('push_endpoint', ''));
             $audit->record((int) $user['id'], 'auth.login', 'user', (string) $user['id'], ['remember_device' => $remember]);
             return Response::json(['ok' => true, 'user' => $user, 'csrf_token' => Csrf::rotate()]);
         }, [$csrf]);

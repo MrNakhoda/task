@@ -57,5 +57,6 @@ test('login and logout expose secure device lifecycle controls', () => {
     const app = text('public/assets/app.js');
     assert.match(login, /name="remember_device"/);
     assert.match(app, /push_endpoint/);
+    assert.match(app, /endsWith\('\/auth\/login'\)/);
     assert.match(app, /afterLogout/);
 });

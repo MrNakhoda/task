@@ -1,5 +1,5 @@
 ALTER TABLE {{prefix}}user_notifications
-    ADD COLUMN dedupe_key VARCHAR(190) DEFAULT NULL AFTER link_url,
+    ADD COLUMN dedupe_key VARCHAR(160) DEFAULT NULL AFTER link_url,
     ADD UNIQUE KEY uq_user_notification_dedupe (user_id, dedupe_key);
 
 ALTER TABLE {{prefix}}push_notification_deliveries

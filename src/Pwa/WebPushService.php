@@ -47,8 +47,8 @@ final class WebPushService
             'privateKey' => PushConfig::privateKey(),
         ]]);
         $payload = json_encode([
-            'title' => (string) $notification['title'],
-            'body' => (string) ($notification['body'] ?? ''),
+            'title' => mb_substr((string) $notification['title'], 0, 120),
+            'body' => mb_substr((string) ($notification['body'] ?? ''), 0, 500),
             'url' => (string) ($notification['link_url'] ?: '/workspace#notifications'),
             'tag' => 'taskflow-' . (int) $notification['id'],
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
