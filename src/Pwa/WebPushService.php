@@ -65,7 +65,6 @@ final class WebPushService
                 $report = $webPush->sendOneNotification($subscription, $payload, [
                     'TTL' => 86400,
                     'urgency' => 'normal',
-                    'topic' => 'tf-' . (int) $notification['id'],
                 ]);
                 if ($report->isSuccess()) {
                     $this->subscriptions->delivered($notificationId, (int) $target['id']);
