@@ -147,7 +147,9 @@
         button.addEventListener('click', async () => {
             button.disabled = true;
             try {
-                await api(new URL('api/v1/auth/logout', document.baseURI).toString(), { method: 'POST', body: '{}' });
+                const pushEndpoint = await window.TaskFlowPwa?.pushEndpoint?.().catch(() => '') || '';
+                await api(new URL('api/v1/auth/logout', document.baseURI).toString(), { method: 'POST', body: JSON.stringify({ push_endpoint: pushEndpoint }) });
+                await window.TaskFlowPwa?.afterLogout?.().catch(() => null);
                 window.location.assign(new URL('.', document.baseURI).toString());
             } catch (error) {
                 await window.AppModal.alert(error.message, { title: 'خروج انجام نشد', tone: 'danger', icon: '!' });

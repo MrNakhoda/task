@@ -19,6 +19,7 @@ final class AuthService
     public function __construct(
         private readonly AuthRepository $users = new AuthRepository(),
         private readonly PasswordHasher $hasher = new PasswordHasher(),
+        private readonly RememberLoginService $remember = new RememberLoginService(),
     ) {
     }
 
@@ -57,11 +58,12 @@ final class AuthService
             throw $exception;
         }
 
+        $this->remember->revokeCurrent();
         $this->establish($id, 1);
         return $this->publicUser($this->users->findById($id) ?? []);
     }
 
-    public function attempt(string $email, string $password): ?array
+    public function attempt(string $email, string $password, bool $remember = false): ?array
     {
         RateLimiter::hit('auth.login', 20, 600);
         $user = $this->users->findByEmail(strtolower(trim($email)));
@@ -76,6 +78,10 @@ final class AuthService
             $this->users->updateHash($id, $this->hasher->hash($password));
         }
         $this->establish($id, (int) ($user['auth_version'] ?? 1));
+        $this->remember->revokeCurrent();
+        if ($remember) {
+            $this->remember->issue($id, (int) ($user['auth_version'] ?? 1));
+        }
         $this->users->touchLogin($id);
         return $this->publicUser($user);
     }
@@ -89,22 +95,31 @@ final class AuthService
 
         $key = Env::get('AUTH_SESSION_KEY', 'app_user_id') ?? 'app_user_id';
         $id = $_SESSION[$key] ?? null;
-        if (!is_int($id) && !ctype_digit((string) $id)) {
-            return null;
+        if (is_int($id) || ctype_digit((string) $id)) {
+            $user = $this->users->findById((int) $id);
+            $sessionVersion = (int) ($_SESSION['app_auth_version'] ?? 0);
+            if ($user === null || ($user['status'] ?? '') !== 'active' || (int) ($user['auth_version'] ?? 1) !== $sessionVersion) {
+                unset($_SESSION[$key], $_SESSION['app_auth_version']);
+                $this->remember->revokeCurrent();
+                return null;
+            }
+            return $this->current = $this->publicUser($user);
         }
 
-        $user = $this->users->findById((int) $id);
-        $sessionVersion = (int) ($_SESSION['app_auth_version'] ?? 0);
-        if ($user === null || ($user['status'] ?? '') !== 'active' || (int) ($user['auth_version'] ?? 1) !== $sessionVersion) {
-            unset($_SESSION[$key], $_SESSION['app_auth_version']);
+        unset($_SESSION[$key], $_SESSION['app_auth_version']);
+        $user = $this->remember->consume();
+        if ($user === null) {
             return null;
         }
-
+        $this->establish((int) $user['id'], (int) ($user['auth_version'] ?? 1));
+        $this->users->touchLogin((int) $user['id']);
+        $this->resolved = true;
         return $this->current = $this->publicUser($user);
     }
 
     public function logout(): void
     {
+        $this->remember->revokeCurrent();
         $key = Env::get('AUTH_SESSION_KEY', 'app_user_id') ?? 'app_user_id';
         unset($_SESSION[$key], $_SESSION['app_auth_version']);
         $this->resolved = true;

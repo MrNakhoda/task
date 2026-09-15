@@ -8,7 +8,10 @@ use App\Auth\PasswordHasher;
 use App\Core\ModuleRegistry;
 use App\Database\Migrator;
 use App\Notification\MailTransport;
+use App\Modules\Workflow\DueReminderService;
+use App\Pwa\WebPushService;
 use App\Queue\JobQueue;
+use Minishlink\WebPush\VAPID;
 
 require dirname(__DIR__) . '/bootstrap.php';
 
@@ -83,14 +86,38 @@ switch ($command) {
 
     case 'queue:work':
         $queue = new JobQueue();
-        $worked = $queue->workOnce(static function (string $type, array $payload): void {
+        $limit = max(1, min(500, (int) ($option('limit') ?? '1')));
+        $processed = 0;
+        $handler = static function (string $type, array $payload): void {
             if ($type === 'notification.email') {
                 (new MailTransport())->send($payload);
                 return;
             }
+            if ($type === 'notification.web_push') {
+                (new WebPushService())->sendNotification((int) ($payload['notification_id'] ?? 0));
+                return;
+            }
             throw new RuntimeException('No queue handler registered for: ' . $type);
-        });
-        echo $worked ? "Processed one job.\n" : "Queue is empty.\n";
+        };
+        while ($processed < $limit && $queue->workOnce($handler)) {
+            $processed++;
+        }
+        echo $processed > 0 ? "Processed {$processed} job(s).\n" : "Queue is empty.\n";
+        break;
+
+    case 'notifications:due':
+        $created = (new DueReminderService())->dispatch();
+        echo "Created {$created} due notification(s).\n";
+        break;
+
+    case 'push:vapid-key':
+        if (!class_exists(VAPID::class)) {
+            fwrite(STDERR, "Web Push package is missing. Run composer install first.\n");
+            exit(2);
+        }
+        $keys = VAPID::createVapidKeys();
+        echo 'PUSH_VAPID_PUBLIC_KEY=' . $keys['publicKey'] . "\n";
+        echo 'PUSH_VAPID_PRIVATE_KEY=' . $keys['privateKey'] . "\n";
         break;
 
     case 'help':
@@ -102,7 +129,9 @@ Commands:
   migrate [--modules=catalog,commerce]
   migration:status [--modules=catalog,commerce]
   admin:create email@example.com [--name=Name] [--password=Secret]
-  queue:work --once
+  queue:work [--limit=100]
+  notifications:due
+  push:vapid-key
   help
 
 HELP;

@@ -10,6 +10,7 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\Router;
 use App\Security\Csrf;
+use App\Pwa\PushSubscriptionRepository;
 use RuntimeException;
 
 final class AuthModule implements Module
@@ -23,6 +24,7 @@ final class AuthModule implements Module
     {
         $auth = new AuthService();
         $audit = new AuditLogger();
+        $pushSubscriptions = new PushSubscriptionRepository();
         $csrf = static function (Request $request, callable $next): Response {
             if (!Csrf::validRequest($request)) {
                 return Response::json(['ok' => false, 'error' => 'The security token has expired. Refresh and try again.'], 419);
@@ -50,20 +52,24 @@ final class AuthModule implements Module
         }, [$csrf]);
 
         $router->post('/api/v1/auth/login', static function (Request $request) use ($auth, $audit): Response {
+            $rememberInput = $request->input('remember_device', false);
+            $remember = in_array($rememberInput, [true, 1, '1', 'true', 'on'], true);
             $user = $auth->attempt(
                 (string) $request->input('email', ''),
                 (string) $request->input('password', ''),
+                $remember,
             );
             if ($user === null) {
                 return Response::json(['ok' => false, 'error' => 'Email or password is incorrect.'], 401);
             }
-            $audit->record((int) $user['id'], 'auth.login', 'user', (string) $user['id']);
+            $audit->record((int) $user['id'], 'auth.login', 'user', (string) $user['id'], ['remember_device' => $remember]);
             return Response::json(['ok' => true, 'user' => $user, 'csrf_token' => Csrf::rotate()]);
         }, [$csrf]);
 
-        $router->post('/api/v1/auth/logout', static function (Request $request) use ($auth, $audit): Response {
+        $router->post('/api/v1/auth/logout', static function (Request $request) use ($auth, $audit, $pushSubscriptions): Response {
             $user = $auth->user();
             if ($user !== null) {
+                $pushSubscriptions->revoke((int) $user['id'], (string) $request->input('push_endpoint', ''));
                 $audit->record((int) $user['id'], 'auth.logout', 'user', (string) $user['id']);
             }
             $auth->logout();

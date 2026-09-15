@@ -160,6 +160,55 @@ $test('completed tasks remain on the main board until explicitly archived', stat
     $assert(is_string($stylesheet) && str_contains($stylesheet, 'repeat(auto-fit, minmax(260px, 1fr))'), 'Filtered boards must use the full available width.');
 });
 
+$test('remembered login uses rotating server-side hashed tokens', static function () use ($assert): void {
+    $migration = file_get_contents(APP_ROOT . '/database/migrations/002_remember_login_and_web_push.sql');
+    $service = file_get_contents(APP_ROOT . '/src/Auth/RememberLoginService.php');
+    $auth = file_get_contents(APP_ROOT . '/src/Auth/AuthService.php');
+    $login = file_get_contents(APP_ROOT . '/views/login.php');
+    $assert(is_string($migration) && str_contains($migration, '{{prefix}}remember_login_tokens'));
+    $assert(str_contains($migration, 'validator_hash CHAR(64)'));
+    $assert(!str_contains($migration, 'validator VARCHAR'), 'Raw validators must never be persisted.');
+    $assert(is_string($service) && str_contains($service, "hash('sha256', \$validator)"));
+    $assert(str_contains($service, 'validator_hash=?,last_used_at=NOW()'), 'Remember validators must rotate after automatic login.');
+    $assert(str_contains($service, "'httponly' => true") && str_contains($service, "'samesite' => 'Lax'"));
+    $assert(is_string($auth) && str_contains($auth, '$this->remember->consume()'));
+    $assert(str_contains($auth, '$this->remember->revokeCurrent()'));
+    $assert(is_string($login) && str_contains($login, 'name="remember_device"'));
+});
+
+$test('web push keeps an in-app source of truth and per-device delivery state', static function () use ($assert): void {
+    $coreMigration = file_get_contents(APP_ROOT . '/database/migrations/002_remember_login_and_web_push.sql');
+    $workflowMigration = file_get_contents(APP_ROOT . '/database/modules/workflow/004_notification_delivery.sql');
+    $notifications = file_get_contents(APP_ROOT . '/src/Notification/NotificationService.php');
+    $push = file_get_contents(APP_ROOT . '/src/Pwa/WebPushService.php');
+    $module = file_get_contents(APP_ROOT . '/src/Pwa/PwaModule.php');
+    foreach (['push_subscriptions', 'push_notification_deliveries'] as $table) {
+        $assert(is_string($coreMigration) && str_contains($coreMigration, '{{prefix}}' . $table));
+    }
+    $assert(is_string($workflowMigration) && str_contains($workflowMigration, 'dedupe_key'));
+    $assert(is_string($notifications) && str_contains($notifications, "'notification.web_push'"));
+    $assert(is_string($push) && str_contains($push, 'sendOneNotification'));
+    $assert(str_contains($push, 'isSubscriptionExpired'));
+    foreach (['/api/v1/pwa/config', '/api/v1/pwa/subscriptions', '/api/v1/pwa/subscriptions/remove', '/api/v1/pwa/test'] as $route) {
+        $assert(is_string($module) && str_contains($module, $route), 'Missing PWA route: ' . $route);
+    }
+});
+
+$test('PWA shell is installable without caching private application data', static function () use ($assert): void {
+    $manifest = json_decode((string) file_get_contents(APP_ROOT . '/public/manifest.webmanifest'), true, flags: JSON_THROW_ON_ERROR);
+    $worker = file_get_contents(APP_ROOT . '/public/sw.js');
+    $layout = file_get_contents(APP_ROOT . '/views/layout.php');
+    $pwa = file_get_contents(APP_ROOT . '/public/assets/pwa.js');
+    $assert(($manifest['display'] ?? '') === 'standalone');
+    $assert(($manifest['dir'] ?? '') === 'rtl');
+    $assert(is_string($worker) && str_contains($worker, "url.pathname.startsWith('/api/')"));
+    $assert(str_contains($worker, "request.mode === 'navigate'"));
+    $assert(is_string($layout) && str_contains($layout, 'rel="manifest"'));
+    $assert(str_contains($layout, 'apple-touch-icon'));
+    $assert(is_string($pwa) && str_contains($pwa, 'beforeinstallprompt'));
+    $assert(str_contains($pwa, 'Notification.requestPermission()'));
+});
+
 $test('management navigation and reference data follow effective permissions', static function () use ($assert): void {
     $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
     $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');

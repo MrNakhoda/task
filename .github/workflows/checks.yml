@@ -16,7 +16,9 @@ jobs:
         with:
           node-version: '22'
       - name: Check browser JavaScript syntax
-        run: node --check public/assets/app.js && node --check public/assets/workflow.js
+        run: node --check public/assets/app.js && node --check public/assets/pwa.js && node --check public/assets/workflow.js && node --check public/sw.js
+      - name: Run PWA regression tests
+        run: node --test tests/pwa.test.mjs
 
   php:
     runs-on: ubuntu-latest
@@ -32,6 +34,14 @@ jobs:
           coverage: none
       - name: Validate Composer metadata
         run: composer validate --strict --no-check-publish
+      - name: Install production dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Export resolved dependency lock
+        if: ${{ matrix.php == '8.2' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: composer-lock-${{ github.sha }}
+          path: composer.lock
       - name: Lint PHP files
         run: find src config public tests views -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Run regression tests

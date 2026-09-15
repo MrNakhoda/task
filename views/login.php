@@ -14,6 +14,7 @@
                     <label for="password">رمز عبور</label>
                     <div class="password-field"><input class="input" id="password" type="password" name="password" maxlength="4096" autocomplete="current-password" dir="ltr" placeholder="رمز عبور" required><button type="button" data-password-toggle aria-label="نمایش رمز عبور">نمایش</button></div>
                 </div>
+                <label class="auth-remember"><input type="checkbox" name="remember_device" value="1"><span><strong>روی این دستگاه وارد بمان</strong><small>فقط برای دستگاه شخصی؛ حداکثر ۳۰ روز</small></span></label>
                 <button class="btn btn-block auth-submit" type="submit"><span>ورود به پنل</span><i aria-hidden="true">←</i></button>
             </form>
             <?php if (\App\Support\Env::bool('AUTH_ALLOW_REGISTRATION', false)): ?><p class="auth-register">حساب ندارید؟ <a href="<?= htmlspecialchars($to('/register'), ENT_QUOTES, 'UTF-8') ?>">ساخت حساب جدید</a></p><?php endif; ?>

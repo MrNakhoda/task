@@ -22,6 +22,9 @@
 - باقی‌ماندن وظایف انجام‌شده روی برد تا آرشیو دستی و امکان آرشیو/بازگردانی وظیفه و پروژه
 - History تغییرناپذیر برای سفارش و Task
 - اعلان داخل پنل برای تخصیص و فعال‌شدن وظایف
+- نصب PWA روی Android و iPhone با رابط نصب یک‌باره و حالت Standalone
+- ورود ماندگار امن و قابل ابطال روی دستگاه شخصی تا ۳۰ روز
+- Web Push برای تخصیص، فعال‌شدن مرحله، موعد و عقب‌افتادگی وظایف
 - افزودن، غیرفعال‌کردن و جابه‌جایی مراحل یک سفارش فعال بدون حذف History
 - پیوست چند تصویر به سفارش
 - فیلتر سفارش‌ها و وظایف بر اساس مشتری، وزن، نوع، وضعیت و اولویت
@@ -36,14 +39,41 @@ cp .env.example .env
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 # APP_KEY و اطلاعات DB را در .env تنظیم کنید.
 
+composer install
 php bin/console migrate
 php bin/console admin:create admin@example.com
-cd public\nphp -S 127.0.0.1:8080 router.php
+cd public
+php -S 127.0.0.1:8080 router.php
 ```
 
 سپس وارد `/login` شوید. فضای کاری اصلی در `/workspace` قرار دارد.
 
 در Apache/DirectAdmin باید Document Root روی پوشهٔ `public/` باشد.
+
+## فعال‌سازی PWA و Push در محیط اصلی
+
+سایت باید با HTTPS در دسترس باشد. پس از نصب وابستگی‌ها، کلیدهای VAPID را فقط یک بار بسازید:
+
+```bash
+php bin/console push:vapid-key
+```
+
+خروجی را همراه نشانی اصلی سایت در `.env` قرار دهید. این کلیدها را در انتشارهای بعدی عوض نکنید؛ تعویض آن‌ها Subscriptionهای قبلی کاربران را از کار می‌اندازد.
+
+```dotenv
+PUSH_VAPID_SUBJECT=https://work.maahdima.com
+PUSH_VAPID_PUBLIC_KEY=...
+PUSH_VAPID_PRIVATE_KEY=...
+```
+
+برای تحویل اعلان‌ها و ساخت یادآوری موعدها این Cronها لازم‌اند:
+
+```cron
+* * * * * /usr/local/bin/php /path/to/taskflow/bin/console queue:work --limit=100 >> /path/to/taskflow/storage/logs/queue-cron.log 2>&1
+*/15 * * * * /usr/local/bin/php /path/to/taskflow/bin/console notifications:due >> /path/to/taskflow/storage/logs/due-cron.log 2>&1
+```
+
+Service Worker فقط فایل‌های عمومی ثابت و صفحهٔ راهنمای قطع اتصال را Cache می‌کند. HTML احراز هویت‌شده، API و اطلاعات پروژه عمداً آفلاین ذخیره نمی‌شوند. چک‌لیست تست دستگاه واقعی در `docs/PWA_TEST_CHECKLIST_FA.md` قرار دارد.
 
 ## منطق Workflow
 

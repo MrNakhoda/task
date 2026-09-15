@@ -215,6 +215,10 @@
             badge.textContent = count ? count.toLocaleString('fa-IR') : '';
             badge.hidden = count === 0;
         });
+        if ('setAppBadge' in navigator) {
+            if (count > 0) navigator.setAppBadge(count).catch(() => null);
+            else navigator.clearAppBadge().catch(() => null);
+        }
     }
 
     async function loadProjects(query = '') {
@@ -394,7 +398,7 @@
 
     function renderNotifications() {
         const list = root.querySelector('[data-notification-list]');
-        list.innerHTML = state.notifications.map(item => `<article class="tf-notification ${item.read_at ? '' : 'unread'}"><i>◉</i><div><strong>${esc(item.title)}</strong><p>${esc(item.body || '')}</p><small>${esc(item.created_at)}</small></div></article>`).join('') || '<div class="tf-empty">اعلانی وجود ندارد.</div>';
+        list.innerHTML = state.notifications.map(item => `<button type="button" class="tf-notification ${item.read_at ? '' : 'unread'}" data-notification-id="${Number(item.id)}" data-notification-link="${esc(item.link_url || '/workspace#notifications')}"><i>◉</i><div><strong>${esc(item.title)}</strong><p>${esc(item.body || '')}</p><small>${esc(item.created_at)}</small></div></button>`).join('') || '<div class="tf-empty">اعلانی وجود ندارد.</div>';
     }
 
     async function showTask(taskId) {
@@ -511,6 +515,17 @@
         if (projectLink) { await showProject(projectLink.dataset.projectOpen).catch(error => toast(error.message, 'error')); return; }
         const taskLink = event.target.closest('[data-task-open]');
         if (taskLink) { await showTask(taskLink.dataset.taskOpen).catch(error => toast(error.message, 'error')); return; }
+        const notificationLink = event.target.closest('[data-notification-link]');
+        if (notificationLink) {
+            await api(`notifications/${notificationLink.dataset.notificationId}/read`, { method: 'POST' }).catch(() => null);
+            const target = new URL(notificationLink.dataset.notificationLink, location.origin);
+            const taskId = Number(target.searchParams.get('task') || 0);
+            await Promise.all([loadNotifications(), loadOverview()]);
+            if (target.origin !== location.origin) return;
+            if (taskId > 0) { go('tasks'); await showTask(taskId).catch(error => toast(error.message, 'error')); return; }
+            location.assign(target.href);
+            return;
+        }
         const templateLink = event.target.closest('[data-template-select]');
         if (templateLink) { selectTemplate(templateLink.dataset.templateSelect); return; }
 
@@ -728,6 +743,17 @@
     const allowedViews = ['projects', 'tasks', 'archives', 'workflows', 'task-types', 'customers', 'teams', 'users', 'guide', 'notifications'];
     const requestedView = location.hash.replace('#', '');
     refreshAll()
-        .then(() => go(allowedViews.includes(requestedView) ? requestedView : 'dashboard', true))
+        .then(async () => {
+            go(allowedViews.includes(requestedView) ? requestedView : 'dashboard', true);
+            const taskId = Number(new URLSearchParams(location.search).get('task') || 0);
+            if (taskId > 0) await showTask(taskId);
+        })
         .catch(error => toast(error.message, 'error'));
+    const refreshNotificationState = () => {
+        if (document.visibilityState !== 'visible') return;
+        Promise.all([loadNotifications(), loadOverview()]).catch(() => null);
+    };
+    window.addEventListener('taskflow:notification', refreshNotificationState);
+    document.addEventListener('visibilitychange', refreshNotificationState);
+    window.setInterval(refreshNotificationState, 60000);
 })();

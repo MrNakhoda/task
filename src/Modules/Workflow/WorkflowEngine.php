@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace App\Modules\Workflow;
 
 use App\Database\Connection;
+use App\Notification\NotificationService;
 use App\Support\Table;
 use PDO;
 use RuntimeException;
 
 final class WorkflowEngine
 {
-    public function __construct(private readonly WorkflowRepository $repository = new WorkflowRepository())
-    {
+    public function __construct(
+        private readonly WorkflowRepository $repository = new WorkflowRepository(),
+        private readonly NotificationService $notifications = new NotificationService(),
+    ) {
     }
 
     public function activateOrder(int $orderId, int $actorId): void
@@ -179,7 +182,7 @@ final class WorkflowEngine
             $insert = $pdo->prepare("INSERT INTO {$assignees} (task_id,user_id,assigned_by) VALUES (?,?,?)");
             foreach ($userIds as $userId) {
                 $insert->execute([$taskId, $userId, $actorId]);
-                $this->notify($userId, 'task.assigned', 'وظیفه به شما تخصیص یافت', (string) $task['title'], '/workspace#tasks');
+                $this->notify($userId, 'task.assigned', 'وظیفه به شما تخصیص یافت', (string) $task['title'], '/workspace?task=' . $taskId . '#tasks');
             }
             $this->repository->history($this->projectId($task), $taskId, $actorId, 'task.reassigned', 'مسئولان وظیفه تغییر کردند.', ['user_ids' => $userIds]);
             $pdo->commit();
@@ -334,7 +337,7 @@ final class WorkflowEngine
         $insert = $pdo->prepare("INSERT IGNORE INTO {$assignees} (task_id,user_id,assigned_by) VALUES (?,?,?)");
         foreach (array_map('intval', $query->fetchAll(PDO::FETCH_COLUMN)) as $userId) {
             $insert->execute([$taskId, $userId, $actorId]);
-            $this->notify($userId, 'task.created', 'وظیفه جدید برای شما', $title, '/workspace#tasks');
+            $this->notify($userId, 'task.created', 'وظیفه جدید برای شما', $title, '/workspace?task=' . $taskId . '#tasks');
         }
         $this->repository->history((int) $step['order_id'], $taskId, $actorId, 'step.activated', 'مرحله فعال و وظیفه آن ایجاد شد.', ['step_id' => (int) $step['id']]);
     }
@@ -493,8 +496,7 @@ final class WorkflowEngine
 
     private function notify(int $userId, string $event, string $title, string $body, ?string $link): void
     {
-        $table = Table::name('user_notifications');
-        Connection::get()->prepare("INSERT INTO {$table} (user_id,event_type,title,body,link_url) VALUES (?,?,?,?,?)")->execute([$userId, $event, $title, $body, $link]);
+        $this->notifications->user($userId, $event, $title, $body, $link);
     }
 
     private function ids(mixed $values): array
