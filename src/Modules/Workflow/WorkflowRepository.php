@@ -7,13 +7,20 @@ namespace App\Modules\Workflow;
 use App\Audit\AuditLogger;
 use App\Auth\AuthRepository;
 use App\Auth\PasswordHasher;
+use App\Auth\RememberLoginService;
 use App\Database\Connection;
+use App\Notification\NotificationService;
+use App\Pwa\PushSubscriptionRepository;
 use App\Support\Table;
 use PDO;
 use RuntimeException;
 
 final class WorkflowRepository
 {
+    public function __construct(private readonly NotificationService $notificationService = new NotificationService())
+    {
+    }
+
     public function overview(int $userId, bool $manageProjects, bool $manageTasks): array
     {
         $orders = Table::name('work_orders');
@@ -246,7 +253,6 @@ final class WorkflowRepository
         $this->assertActiveUsers($assigneeIds);
         $tasks = Table::name('tasks');
         $assignees = Table::name('task_assignees');
-        $notifications = Table::name('user_notifications');
         $pdo = Connection::get();
         $pdo->beginTransaction();
         try {
@@ -259,10 +265,9 @@ final class WorkflowRepository
             ]);
             $taskId = (int) $pdo->lastInsertId();
             $assign = $pdo->prepare("INSERT INTO {$assignees} (task_id,user_id,assigned_by) VALUES (?,?,?)");
-            $notify = $pdo->prepare("INSERT INTO {$notifications} (user_id,event_type,title,body,link_url) VALUES (?,'task.assigned','تسک جدید برای شما',?, '/workspace#tasks')");
             foreach ($assigneeIds as $userId) {
                 $assign->execute([$taskId, $userId, $actorId]);
-                $notify->execute([$userId, (string) $data['title']]);
+                $this->notificationService->user($userId, 'task.assigned', 'تسک جدید برای شما', (string) $data['title'], '/workspace?task=' . $taskId . '#tasks');
             }
             $this->history(null, $taskId, $actorId, 'task.created', 'تسک مستقل ایجاد و تخصیص داده شد.', ['user_ids' => $assigneeIds]);
             $pdo->commit();
@@ -477,6 +482,13 @@ final class WorkflowRepository
         Connection::get()->prepare("UPDATE {$table} SET read_at=COALESCE(read_at,NOW()) WHERE user_id=?")->execute([$userId]);
     }
 
+    public function markNotificationRead(int $notificationId, int $userId): void
+    {
+        $table = Table::name('user_notifications');
+        Connection::get()->prepare("UPDATE {$table} SET read_at=COALESCE(read_at,NOW()) WHERE id=? AND user_id=?")
+            ->execute([$notificationId, $userId]);
+    }
+
     public function createUser(array $data, int $actorId): int
     {
         $name = trim((string) ($data['name'] ?? ''));
@@ -553,6 +565,10 @@ final class WorkflowRepository
             $insert = $pdo->prepare("INSERT INTO {$userRoles} (user_id,role_id) VALUES (?,?)");
             foreach ($newRoleIds as $roleId) $insert->execute([$userId, $roleId]);
             $this->assertFullAdministratorRemains($pdo);
+            if ($invalidateSessions) {
+                (new RememberLoginService())->revokeAll($userId);
+                (new PushSubscriptionRepository())->revokeAll($userId);
+            }
             (new AuditLogger())->record($actorId, 'user.updated', 'user', (string) $userId, ['status' => $status, 'role_ids' => $newRoleIds, 'password_reset' => $newPassword !== '']);
             $pdo->commit();
         } catch (\Throwable $exception) {
@@ -568,6 +584,8 @@ final class WorkflowRepository
         $statement = Connection::get()->prepare("UPDATE {$users} SET password_hash=?,auth_version=auth_version+1 WHERE id=? AND deleted_at IS NULL");
         $statement->execute([(new PasswordHasher())->hash($password), $userId]);
         if ($statement->rowCount() < 1) throw new RuntimeException('کاربر پیدا نشد.');
+        (new RememberLoginService())->revokeAll($userId);
+        (new PushSubscriptionRepository())->revokeAll($userId);
         (new AuditLogger())->record($actorId, 'user.password_reset', 'user', (string) $userId);
     }
 

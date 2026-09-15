@@ -9,6 +9,7 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\Router;
 use App\Module\SystemModule;
+use App\Pwa\PwaModule;
 use App\Support\Env;
 use App\Support\Logger;
 use Throwable;
@@ -31,6 +32,7 @@ final class Application
 
         (new SystemModule($enabled))->register($router);
         (new AuthModule())->register($router);
+        (new PwaModule())->register($router);
 
         foreach ($enabled as $name) {
             $class = $registry[$name]['class'];

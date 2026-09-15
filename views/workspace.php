@@ -137,7 +137,14 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
             <section class="tf-card tf-guide-card"><div class="tf-card-head"><div><h2>قانون تخصیص وظیفه</h2><p>سیستم دقیقاً به چه کسی تسک می‌دهد؟</p></div></div><div class="tf-guide-copy"><p>در قالب برای هر مرحله کاربر، تیم یا نقش پیش‌فرض انتخاب کن. هنگام شروع پروژه، سیستم افراد مرتبط را از بین اعضای همان پروژه انتخاب می‌کند. اگر مسئولی تعیین نشده یا مسئول پیش‌فرض عضو پروژه نباشد، تسک به اعضای پروژه داده می‌شود تا بدون مسئول نماند.</p><p>اگر تسک به چند نفر داده شود، تکمیل توسط یک نفر کافی است. مدیر از «جزئیات و مسئولان» می‌تواند تخصیص را عوض کند.</p></div></section>
         </section>
 
-        <section class="tf-view" data-view="notifications"><div class="tf-page-head"><div><span>تغییرات کار</span><h1>اعلان‌ها</h1><p>تخصیص تسک و فعال‌شدن مراحل جدید.</p></div><button class="tf-button secondary" data-read-notifications>خواندن همه</button></div><section class="tf-card tf-notifications" data-notification-list></section></section>
+        <section class="tf-view" data-view="notifications">
+            <div class="tf-page-head"><div><span>تغییرات کار</span><h1>اعلان‌ها</h1><p>تخصیص تسک، فعال‌شدن مراحل و یادآوری موعدها.</p></div><button class="tf-button secondary" data-read-notifications>خواندن همه</button></div>
+            <section class="tf-card tf-pwa-settings">
+                <div><span class="tf-pwa-icon">◉</span><div><h2>اعلان روی گوشی</h2><p data-push-status>در حال بررسی امکان دریافت اعلان…</p></div></div>
+                <div class="tf-head-actions"><button class="tf-button secondary" type="button" data-pwa-open-install hidden>نصب برنامه</button><button class="tf-button" type="button" data-push-enable hidden>فعال‌سازی اعلان</button><button class="tf-button secondary" type="button" data-push-test hidden>اعلان آزمایشی</button><button class="tf-button ghost" type="button" data-push-disable hidden>غیرفعال‌سازی</button></div>
+            </section>
+            <section class="tf-card tf-notifications" data-notification-list></section>
+        </section>
     </main>
 
     <nav class="tf-mobile-nav" aria-label="دسترسی سریع">

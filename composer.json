@@ -6,14 +6,15 @@
   "require": {
     "php": ">=8.2",
     "ext-fileinfo": "*",
+    "ext-curl": "*",
     "ext-json": "*",
     "ext-mbstring": "*",
     "ext-openssl": "*",
     "ext-pdo": "*",
-    "ext-pdo_mysql": "*"
+    "ext-pdo_mysql": "*",
+    "minishlink/web-push": "^10.0"
   },
   "suggest": {
-    "ext-curl": "Required by the optional Zarinpal payment adapter.",
     "ext-gd": "Recommended for application-specific image processing."
   },
   "autoload": {

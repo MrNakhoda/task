@@ -1,0 +1,26 @@
+{
+  "id": "/workspace",
+  "name": "TaskFlow — مدیریت کار و پروژه",
+  "short_name": "TaskFlow",
+  "description": "مدیریت پروژه‌ها، گردش‌کار و وظایف تیمی",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "/workspace?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#f5f7fb",
+  "theme_color": "#3157d5",
+  "icons": [
+    { "src": "/icons/taskflow-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/taskflow-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/taskflow-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/taskflow-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "وظایف", "short_name": "وظایف", "url": "/workspace#tasks", "icons": [{ "src": "/icons/taskflow-192.png", "sizes": "192x192" }] },
+    { "name": "پروژه‌ها", "short_name": "پروژه‌ها", "url": "/workspace#projects", "icons": [{ "src": "/icons/taskflow-192.png", "sizes": "192x192" }] },
+    { "name": "اعلان‌ها", "short_name": "اعلان‌ها", "url": "/workspace#notifications", "icons": [{ "src": "/icons/taskflow-192.png", "sizes": "192x192" }] }
+  ]
+}

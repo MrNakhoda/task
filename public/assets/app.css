@@ -490,6 +490,9 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-notification strong { font-size: 12px; }
 .tf-notification p { margin: 1px 0; color: #737e92; font-size: 10px; }
 .tf-notification small { color: #9ba3b2; font-size: 9px; }
+.tf-notification { width: 100%; border-width: 0 0 1px; font: inherit; text-align: right; cursor: pointer; }
+.tf-notification:hover { background: #f7f9fd; }
+.tf-notification:focus-visible { position: relative; z-index: 1; outline: 3px solid rgba(49,87,213,.25); outline-offset: -3px; }
 .tf-dialog { width: min(680px, calc(100% - 24px)); max-height: calc(100vh - 40px); padding: 0; overflow: auto; border: 0; border-radius: 17px; box-shadow: 0 35px 90px rgba(15,23,42,.28); direction: rtl; }
 .tf-dialog::backdrop { background: rgba(15,23,42,.55); backdrop-filter: blur(3px); }
 .tf-modal-card { display: grid; gap: 15px; padding: 22px; }
@@ -937,4 +940,37 @@ body:has(.tf-app) { overflow-x: hidden; background: #f4f6fa; }
     .tf-metrics article { min-height: 74px; }
     .tf-setup-card > div { grid-template-columns: 1fr; }
     .tf-mobile-nav { right: 8px; left: 8px; }
+}
+
+/* Installable app and device notification controls */
+.auth-remember { display: flex; align-items: flex-start; gap: 10px; padding: 2px 1px; color: #38445a; cursor: pointer; }
+.auth-remember input { width: 18px; height: 18px; margin-top: 3px; accent-color: #3157d5; }
+.auth-remember span { display: grid; gap: 1px; }
+.auth-remember strong { font-size: 13px; font-weight: 700; }
+.auth-remember small { color: #7d8799; font-size: 10px; }
+.pwa-install-card { position: fixed; z-index: 100; right: 24px; bottom: 24px; display: grid; width: min(560px, calc(100vw - 48px)); grid-template-columns: 52px 1fr; gap: 14px; padding: 17px; border: 1px solid #dfe4ee; border-radius: 20px; background: rgba(255,255,255,.98); box-shadow: 0 22px 70px rgba(20,31,58,.2); backdrop-filter: blur(18px); }
+.pwa-install-card[hidden], .pwa-update-card[hidden], .pwa-offline[hidden] { display: none !important; }
+.pwa-install-card img { border-radius: 13px; box-shadow: 0 8px 22px rgba(49,87,213,.2); }
+.pwa-install-card h2 { margin: 0; color: #1c2639; font-size: 15px; }
+.pwa-install-card p { margin: 3px 0 0; color: #727d90; font-size: 11px; line-height: 1.8; }
+.pwa-install-card ol { grid-column: 1 / -1; margin: 9px 18px 0 0; padding: 0 18px 0 0; color: #4d586d; font-size: 11px; line-height: 2; }
+.pwa-install-actions { display: flex; grid-column: 1 / -1; gap: 8px; justify-content: flex-end; }
+.pwa-update-card { position: fixed; z-index: 110; bottom: 22px; left: 22px; display: flex; align-items: center; gap: 16px; padding: 12px 15px; border-radius: 14px; background: #192338; color: #fff; box-shadow: 0 16px 45px rgba(18,27,48,.25); font-size: 12px; }
+.pwa-update-card button { padding: 7px 12px; border: 0; border-radius: 9px; background: #fff; color: #3157d5; font: inherit; font-weight: 800; cursor: pointer; }
+.pwa-offline { position: fixed; z-index: 130; top: 0; right: 0; left: 0; padding: 7px 14px; background: #9a3412; color: #fff; text-align: center; font-size: 11px; }
+.tf-pwa-settings { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 16px; padding: 17px 19px; }
+.tf-pwa-settings > div:first-child { display: flex; align-items: center; gap: 12px; }
+.tf-pwa-settings h2, .tf-pwa-settings p { margin: 0; }
+.tf-pwa-settings h2 { font-size: 14px; }
+.tf-pwa-settings p { color: #737e92; font-size: 11px; }
+.tf-pwa-settings p[data-state="success"] { color: #15803d; }
+.tf-pwa-settings p[data-state="error"] { color: #b42318; }
+.tf-pwa-icon { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border-radius: 12px; background: #edf1ff; color: #4969e8; font-size: 17px; }
+
+@media (max-width: 760px) {
+    .pwa-install-card { right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
+    .pwa-install-actions { display: grid; grid-template-columns: 1fr 1fr; }
+    .pwa-update-card { right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); left: 12px; justify-content: space-between; }
+    .tf-pwa-settings { align-items: stretch; flex-direction: column; }
+    .tf-pwa-settings .tf-head-actions { width: 100%; }
 }

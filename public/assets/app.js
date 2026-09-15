@@ -122,7 +122,11 @@
             if (errorBox) { errorBox.hidden = true; errorBox.textContent = ''; }
             if (submit) submit.disabled = true;
             try {
-                await api(form.dataset.endpoint, { method: 'POST', body: JSON.stringify(formPayload(form)) });
+                const payload = formPayload(form);
+                if (String(form.dataset.endpoint || '').endsWith('/auth/login')) {
+                    payload.push_endpoint = await window.TaskFlowPwa?.pushEndpoint?.().catch(() => '') || '';
+                }
+                await api(form.dataset.endpoint, { method: 'POST', body: JSON.stringify(payload) });
                 window.location.assign(form.dataset.redirect || '/dashboard');
             } catch (error) {
                 if (errorBox) { errorBox.textContent = error.message; errorBox.hidden = false; }
@@ -147,7 +151,9 @@
         button.addEventListener('click', async () => {
             button.disabled = true;
             try {
-                await api(new URL('api/v1/auth/logout', document.baseURI).toString(), { method: 'POST', body: '{}' });
+                const pushEndpoint = await window.TaskFlowPwa?.pushEndpoint?.().catch(() => '') || '';
+                await api(new URL('api/v1/auth/logout', document.baseURI).toString(), { method: 'POST', body: JSON.stringify({ push_endpoint: pushEndpoint }) });
+                await window.TaskFlowPwa?.afterLogout?.().catch(() => null);
                 window.location.assign(new URL('.', document.baseURI).toString());
             } catch (error) {
                 await window.AppModal.alert(error.message, { title: 'خروج انجام نشد', tone: 'danger', icon: '!' });

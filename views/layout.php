@@ -15,10 +15,20 @@ $assetVersion = static fn (string $path): string => (string) (@filemtime(APP_ROO
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
+    <meta name="theme-color" content="#3157d5">
+    <meta name="application-name" content="TaskFlow">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="TaskFlow">
+    <meta name="app-authenticated" content="<?= $currentUser !== null ? '1' : '0' ?>">
+    <meta name="app-user-id" content="<?= (int) ($currentUser['id'] ?? 0) ?>">
     <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
     <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
+    <link rel="manifest" href="<?= htmlspecialchars(Url::to('/manifest.webmanifest'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="apple-touch-icon" href="<?= htmlspecialchars(Url::to('/icons/apple-touch-icon.png'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(Url::to('/assets/app.css') . '?v=' . $assetVersion('/assets/app.css'), ENT_QUOTES, 'UTF-8') ?>">
     <script defer src="<?= htmlspecialchars(Url::to('/assets/app.js') . '?v=' . $assetVersion('/assets/app.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script defer src="<?= htmlspecialchars(Url::to('/assets/pwa.js') . '?v=' . $assetVersion('/assets/pwa.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <?php if (isset($pageScript) && is_string($pageScript)): ?>
         <script defer src="<?= htmlspecialchars($pageScript, ENT_QUOTES, 'UTF-8') ?>"></script>
     <?php endif; ?>
@@ -48,6 +58,18 @@ $assetVersion = static fn (string $path): string => (string) (@filemtime(APP_ROO
 </header>
 
 <main><?= $content ?></main>
+
+<div class="pwa-offline" data-pwa-offline role="status" hidden>اتصال اینترنت قطع است؛ اطلاعات تازه و عملیات اجرایی تا اتصال مجدد در دسترس نیست.</div>
+
+<?php if ($currentUser !== null): ?>
+<aside class="pwa-install-card" data-pwa-install-card role="dialog" aria-labelledby="pwa-install-title" hidden>
+    <img src="<?= htmlspecialchars(Url::to('/icons/taskflow-192.png'), ENT_QUOTES, 'UTF-8') ?>" alt="" width="52" height="52">
+    <div><h2 id="pwa-install-title">TaskFlow را روی گوشی نصب کنید</h2><p data-pwa-install-copy>دسترسی سریع‌تر، نمایش تمام‌صفحه و اعلان وظایف را فعال کنید.</p><ol data-pwa-ios-guide hidden><li>دکمه Share مرورگر Safari را بزنید.</li><li>گزینه Add to Home Screen را انتخاب کنید.</li><li>در پایان Add را بزنید.</li></ol></div>
+    <div class="pwa-install-actions"><button class="tf-button" type="button" data-pwa-install>نصب برنامه</button><button class="tf-button ghost" type="button" data-pwa-install-dismiss>فعلاً نه</button></div>
+</aside>
+<?php endif; ?>
+
+<aside class="pwa-update-card" data-pwa-update role="status" hidden><span>نسخه جدید TaskFlow آماده است.</span><button type="button" data-pwa-update-apply>به‌روزرسانی</button></aside>
 
 <dialog class="app-dialog" data-app-dialog aria-labelledby="app-dialog-title">
     <form class="app-dialog-card" data-app-dialog-form novalidate>

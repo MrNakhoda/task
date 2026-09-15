@@ -216,6 +216,10 @@ final class WorkflowModule implements Module
             $repository->markNotificationsRead($actor());
             return [];
         }), [$authenticated, $csrf]);
+        $router->post('/api/v1/workflow/notifications/{id}/read', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->markNotificationRead((int) ($params['id'] ?? 0), $actor());
+            return [];
+        }), [$authenticated, $csrf]);
 
         $router->post('/api/v1/workflow/task-types', $endpoint(static fn (Request $request) => ['id' => $repository->createTaskType((string) $request->input('name', ''), (string) $request->input('slug', ''), (string) $request->input('color', '#3157d5'), $request->input('description'))], 201), [$authenticated, $csrf, $permission('templates.manage')]);
         $router->post('/api/v1/workflow/task-types/{id}', $endpoint(static function (Request $request, array $params) use ($repository): array {
