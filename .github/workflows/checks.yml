@@ -36,7 +36,51 @@ jobs:
         run: composer validate --strict --no-check-publish
       - name: Install production dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Audit production dependencies
+        run: composer audit --no-interaction
       - name: Lint PHP files
         run: find src config public tests views -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Run regression tests
         run: php tests/run.php
+
+  database:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: taskflow_test
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      APP_ENV: testing
+      APP_DEBUG: true
+      APP_URL: http://localhost
+      APP_TIMEZONE: Asia/Tehran
+      APP_KEY: test-key-with-at-least-sixty-four-characters-000000000000000000000000
+      APP_MODULES: workflow
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: taskflow_test
+      DB_USER: root
+      DB_PASS: root
+      DB_TABLE_PREFIX: app_
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql, fileinfo, curl, openssl
+          coverage: none
+      - name: Install production dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Apply all migrations to MariaDB
+        run: php bin/console migrate --modules=workflow
+      - name: Verify migrations are idempotent
+        run: test "$(php bin/console migrate --modules=workflow)" = "Nothing to migrate."
