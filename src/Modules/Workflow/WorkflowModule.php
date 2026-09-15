@@ -84,21 +84,24 @@ final class WorkflowModule implements Module
             $usersManage = $allows($userId, 'users.manage');
             $rolesManage = $allows($userId, 'roles.manage');
             $projectsManage = $mayManageProjects($userId);
-            $canSeePeople = $usersManage || $rolesManage || $projectsManage || $mayManageTasks($userId) || $allows($userId, 'templates.manage') || $allows($userId, 'teams.manage');
+            $tasksManage = $mayManageTasks($userId);
+            $templatesManage = $allows($userId, 'templates.manage');
+            $teamsManage = $allows($userId, 'teams.manage');
+            $capabilities = [
+                'system_admin' => $isSystemAdmin($userId),
+                'projects_manage' => $projectsManage,
+                'tasks_manage' => $tasksManage,
+                'templates_manage' => $templatesManage,
+                'teams_manage' => $teamsManage,
+                'users_manage' => $usersManage,
+                'roles_manage' => $rolesManage,
+            ];
             return [
-                'reference' => $repository->referenceData($userId, $canSeePeople, $rolesManage, $projectsManage),
-                'capabilities' => [
-                    'system_admin' => $isSystemAdmin($userId),
-                    'projects_manage' => $projectsManage,
-                    'tasks_manage' => $mayManageTasks($userId),
-                    'templates_manage' => $allows($userId, 'templates.manage'),
-                    'teams_manage' => $allows($userId, 'teams.manage'),
-                    'users_manage' => $usersManage,
-                    'roles_manage' => $rolesManage,
-                ],
+                'reference' => $repository->referenceData($userId, $capabilities),
+                'capabilities' => $capabilities,
             ];
         }), [$authenticated]);
-        $router->get('/api/v1/workflow/templates', $endpoint(static fn () => ['templates' => $repository->templates()]), [$authenticated]);
+        $router->get('/api/v1/workflow/templates', $endpoint(static fn () => ['templates' => $repository->templates()]), [$authenticated, $permission('templates.manage')]);
         $router->get('/api/v1/workflow/orders', $endpoint(static fn (Request $request) => ['orders' => $repository->orders([
             'status' => $request->query('status', ''),
             'priority_id' => $request->query('priority_id', ''),

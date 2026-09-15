@@ -33,7 +33,7 @@ final class WorkflowRepository
         ];
     }
 
-    public function referenceData(int $userId, bool $canSeePeople, bool $canManageRoles, bool $manageProjects): array
+    public function referenceData(int $userId, array $access): array
     {
         $users = Table::name('users');
         $roles = Table::name('roles');
@@ -51,19 +51,45 @@ final class WorkflowRepository
         $projectMembers = Table::name('project_members');
         $orders = Table::name('work_orders');
         $assignees = Table::name('task_assignees');
-        $peopleScope = $canSeePeople ? '1=1' : 'u.id=' . (int) $userId;
+        $manageUsers = (bool) ($access['users_manage'] ?? false);
+        $manageRoles = (bool) ($access['roles_manage'] ?? false);
+        $manageProjects = (bool) ($access['projects_manage'] ?? false);
+        $manageTasks = (bool) ($access['tasks_manage'] ?? false);
+        $manageTemplates = (bool) ($access['templates_manage'] ?? false);
+        $manageTeams = (bool) ($access['teams_manage'] ?? false);
+        $canAssignPeople = $manageProjects || $manageTasks || $manageTemplates || $manageTeams;
+        $fullPeopleDetails = $manageUsers || $manageRoles;
         $projectScope = $manageProjects ? '' : ' AND EXISTS (SELECT 1 FROM ' . $projectMembers . ' pm WHERE pm.project_id=o.project_id AND pm.user_id=' . (int) $userId . ')';
+        $userSql = $fullPeopleDetails
+            ? "SELECT u.id,u.name,u.email,u.status,u.last_login_at,(SELECT GROUP_CONCAT(r.display_name ORDER BY r.id SEPARATOR '، ') FROM {$userRoles} ur JOIN {$roles} r ON r.id=ur.role_id WHERE ur.user_id=u.id) role_names,(SELECT GROUP_CONCAT(ur.role_id ORDER BY ur.role_id) FROM {$userRoles} ur WHERE ur.user_id=u.id) role_ids,(SELECT GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR '، ') FROM {$teamMembers} tm JOIN {$teams} t ON t.id=tm.team_id WHERE tm.user_id=u.id) team_names,(SELECT GROUP_CONCAT(DISTINCT o.title ORDER BY o.title SEPARATOR '، ') FROM {$projectMembers} pm JOIN {$orders} o ON o.project_id=pm.project_id WHERE pm.user_id=u.id AND o.deleted_at IS NULL) project_names,(SELECT COUNT(*) FROM {$assignees} ta JOIN {$tasks} tk ON tk.id=ta.task_id WHERE ta.user_id=u.id AND tk.status IN ('open','in_progress')) open_task_count FROM {$users} u WHERE u.deleted_at IS NULL ORDER BY u.name"
+            : "SELECT u.id,u.name,u.email,u.status,u.last_login_at,NULL role_names,NULL role_ids,NULL team_names,NULL project_names,0 open_task_count FROM {$users} u WHERE u.deleted_at IS NULL AND " . ($canAssignPeople ? "u.status='active'" : 'u.id=' . (int) $userId) . ' ORDER BY u.name';
+        $roleSql = $manageRoles
+            ? "SELECT r.id,r.key_name,r.display_name,r.is_active,(SELECT COUNT(*) FROM {$userRoles} ur WHERE ur.role_id=r.id) user_count,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$userRoles} ur JOIN {$users} u ON u.id=ur.user_id WHERE ur.role_id=r.id AND u.deleted_at IS NULL) user_names,(SELECT GROUP_CONCAT(p.key_name ORDER BY p.id) FROM {$rolePermissions} rp JOIN {$permissions} p ON p.id=rp.permission_id WHERE rp.role_id=r.id) permission_keys,(SELECT GROUP_CONCAT(p.display_name ORDER BY p.id SEPARATOR '، ') FROM {$rolePermissions} rp JOIN {$permissions} p ON p.id=rp.permission_id WHERE rp.role_id=r.id) permission_names FROM {$roles} r ORDER BY r.id"
+            : (($manageUsers || $manageTemplates)
+                ? "SELECT id,key_name,display_name,is_active FROM {$roles} WHERE is_active=1 ORDER BY id"
+                : "SELECT id,key_name,display_name,is_active FROM {$roles} WHERE 1=0");
+        $teamSql = $manageTeams
+            ? "SELECT t.id,t.name,t.description,t.is_active,(SELECT COUNT(*) FROM {$teamMembers} tm WHERE tm.team_id=t.id) member_count,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$teamMembers} tm JOIN {$users} u ON u.id=tm.user_id WHERE tm.team_id=t.id) member_names FROM {$teams} t ORDER BY t.name"
+            : ($manageTemplates
+                ? "SELECT t.id,t.name,t.description,t.is_active,0 member_count,NULL member_names FROM {$teams} t WHERE t.is_active=1 ORDER BY t.name"
+                : "SELECT t.id,t.name,t.description,t.is_active,0 member_count,NULL member_names FROM {$teams} t WHERE 1=0");
+        $taskTypeSql = $manageTemplates
+            ? "SELECT tt.id,tt.name,tt.slug,tt.color,tt.description,tt.is_active,((SELECT COUNT(*) FROM {$templateSteps} s WHERE s.task_type_id=tt.id)+(SELECT COUNT(*) FROM {$orderSteps} os WHERE os.task_type_id=tt.id)+(SELECT COUNT(*) FROM {$tasks} t WHERE t.task_type_id=tt.id)) usage_count FROM {$taskTypes} tt ORDER BY tt.name"
+            : "SELECT tt.id,tt.name,tt.slug,tt.color,NULL description,tt.is_active,0 usage_count FROM {$taskTypes} tt WHERE tt.is_active=1 ORDER BY tt.name";
+        $templateScope = $manageTemplates ? '' : ' AND is_active=1';
         $map = [
-            'users' => "SELECT u.id,u.name,u.email,u.status,u.last_login_at,(SELECT GROUP_CONCAT(r.display_name ORDER BY r.id SEPARATOR '، ') FROM {$userRoles} ur JOIN {$roles} r ON r.id=ur.role_id WHERE ur.user_id=u.id) role_names,(SELECT GROUP_CONCAT(ur.role_id ORDER BY ur.role_id) FROM {$userRoles} ur WHERE ur.user_id=u.id) role_ids,(SELECT GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR '، ') FROM {$teamMembers} tm JOIN {$teams} t ON t.id=tm.team_id WHERE tm.user_id=u.id) team_names,(SELECT GROUP_CONCAT(DISTINCT o.title ORDER BY o.title SEPARATOR '، ') FROM {$projectMembers} pm JOIN {$orders} o ON o.project_id=pm.project_id WHERE pm.user_id=u.id AND o.deleted_at IS NULL) project_names,(SELECT COUNT(*) FROM {$assignees} ta JOIN {$tasks} tk ON tk.id=ta.task_id WHERE ta.user_id=u.id AND tk.status IN ('open','in_progress')) open_task_count FROM {$users} u WHERE u.deleted_at IS NULL AND {$peopleScope} ORDER BY u.name",
-            'roles' => $canManageRoles
-                ? "SELECT r.id,r.key_name,r.display_name,r.is_active,(SELECT COUNT(*) FROM {$userRoles} ur WHERE ur.role_id=r.id) user_count,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$userRoles} ur JOIN {$users} u ON u.id=ur.user_id WHERE ur.role_id=r.id AND u.deleted_at IS NULL) user_names,(SELECT GROUP_CONCAT(p.key_name ORDER BY p.id) FROM {$rolePermissions} rp JOIN {$permissions} p ON p.id=rp.permission_id WHERE rp.role_id=r.id) permission_keys,(SELECT GROUP_CONCAT(p.display_name ORDER BY p.id SEPARATOR '، ') FROM {$rolePermissions} rp JOIN {$permissions} p ON p.id=rp.permission_id WHERE rp.role_id=r.id) permission_names FROM {$roles} r ORDER BY r.id"
-                : "SELECT id,key_name,display_name,is_active FROM {$roles} WHERE is_active=1 ORDER BY id",
-            'permissions' => $canManageRoles ? "SELECT id,key_name,display_name FROM {$permissions} ORDER BY id" : "SELECT id,key_name,display_name FROM {$permissions} WHERE 1=0",
-            'teams' => "SELECT t.id,t.name,t.description,t.is_active,(SELECT COUNT(*) FROM {$teamMembers} tm WHERE tm.team_id=t.id) member_count,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$teamMembers} tm JOIN {$users} u ON u.id=tm.user_id WHERE tm.team_id=t.id) member_names FROM {$teams} t ORDER BY t.name",
-            'task_types' => "SELECT tt.id,tt.name,tt.slug,tt.color,tt.description,tt.is_active,((SELECT COUNT(*) FROM {$templateSteps} s WHERE s.task_type_id=tt.id)+(SELECT COUNT(*) FROM {$orderSteps} os WHERE os.task_type_id=tt.id)+(SELECT COUNT(*) FROM {$tasks} t WHERE t.task_type_id=tt.id)) usage_count FROM {$taskTypes} tt ORDER BY tt.name",
-            'templates' => "SELECT id,name,description,version,is_active FROM " . Table::name('workflow_templates') . " WHERE deleted_at IS NULL ORDER BY name",
+            'users' => $userSql,
+            'roles' => $roleSql,
+            'permissions' => $manageRoles ? "SELECT id,key_name,display_name FROM {$permissions} ORDER BY id" : "SELECT id,key_name,display_name FROM {$permissions} WHERE 1=0",
+            'teams' => $teamSql,
+            'task_types' => $taskTypeSql,
+            'templates' => ($manageProjects || $manageTemplates)
+                ? "SELECT id,name,description,version,is_active FROM " . Table::name('workflow_templates') . " WHERE deleted_at IS NULL{$templateScope} ORDER BY name"
+                : "SELECT id,name,description,version,is_active FROM " . Table::name('workflow_templates') . " WHERE 1=0",
             'projects' => "SELECT o.id,o.title name,o.order_number code,o.status,o.due_at FROM {$orders} o WHERE o.deleted_at IS NULL AND o.archived_at IS NULL{$projectScope} ORDER BY o.title",
-            'customers' => "SELECT c.id,c.name,c.phone,c.email,c.notes,(SELECT COUNT(*) FROM {$orderCustomers} oc WHERE oc.customer_id=c.id) order_count FROM {$customers} c WHERE c.deleted_at IS NULL ORDER BY c.name",
+            'customers' => $manageProjects
+                ? "SELECT c.id,c.name,c.phone,c.email,c.notes,(SELECT COUNT(*) FROM {$orderCustomers} oc WHERE oc.customer_id=c.id) order_count FROM {$customers} c WHERE c.deleted_at IS NULL ORDER BY c.name"
+                : "SELECT c.id,c.name,c.phone,c.email,c.notes,0 order_count FROM {$customers} c WHERE 1=0",
             'priorities' => "SELECT id,key_name,name,color,sort_order FROM " . Table::name('order_priorities') . " WHERE is_active=1 ORDER BY sort_order",
         ];
         $result = [];
@@ -191,7 +217,7 @@ final class WorkflowRepository
             $where[] = 't.status=?';
             $params[] = (string) $filters['status'];
         } elseif ($archive !== 'only') {
-            $where[] = "t.status NOT IN ('completed','cancelled')";
+            $where[] = "t.status <> 'cancelled'";
         }
         if ((int) ($filters['task_type_id'] ?? 0) > 0) {
             $where[] = 't.task_type_id=?';

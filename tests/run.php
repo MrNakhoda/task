@@ -147,6 +147,37 @@ $test('archive, member access, user and role safeguards are wired end to end', s
     $assert(str_contains($javascript, 'data-permission-choice') && str_contains($javascript, 'renderEffectivePermissions'), 'Permission selection and effective access preview must be wired.');
 });
 
+$test('completed tasks remain on the main board until explicitly archived', static function () use ($assert): void {
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $stylesheet = file_get_contents(APP_ROOT . '/public/assets/app.css');
+    $assert(is_string($repository) && str_contains($repository, "t.status <> 'cancelled'"));
+    $assert(!str_contains($repository, "t.status NOT IN ('completed','cancelled')"), 'Completed tasks must not be hidden by the default query.');
+    $assert(is_string($view) && str_contains($view, 'همه وظایف جاری'));
+    $assert(is_string($javascript) && str_contains($javascript, "['completed', 'انجام‌شده']"));
+    $assert(str_contains($javascript, 'data-task-column="${status}"'), 'Task columns must expose their status for responsive styling.');
+    $assert(is_string($stylesheet) && str_contains($stylesheet, 'repeat(auto-fit, minmax(260px, 1fr))'), 'Filtered boards must use the full available width.');
+});
+
+$test('management navigation and reference data follow effective permissions', static function () use ($assert): void {
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $assert(is_string($view) && str_contains($view, 'data-view="users" data-view-requires="users_manage,roles_manage"'));
+    foreach (['workflows" data-view-requires="templates_manage', 'customers" data-view-requires="projects_manage', 'teams" data-view-requires="teams_manage'] as $guard) {
+        $assert(str_contains($view, $guard), 'Missing management view guard: ' . $guard);
+    }
+    $assert(is_string($javascript) && str_contains($javascript, 'function canView(view)'));
+    $assert(str_contains($javascript, "toast('به این بخش دسترسی ندارید.'"), 'Direct hash navigation must be guarded.');
+    $assert(str_contains($javascript, 'if (state.capabilities.templates_manage) requests.push(loadTemplates())'));
+    $assert(is_string($module) && str_contains($module, "[\$authenticated, \$permission('templates.manage')]"), 'Template details must require template management permission.');
+    $assert(is_string($repository) && str_contains($repository, 'public function referenceData(int $userId, array $access)'));
+    $assert(str_contains($repository, "\$canAssignPeople ? \"u.status='active'\" : 'u.id='"), 'Workers must receive only their own user reference row.');
+    $assert(str_contains($repository, 'WHERE 1=0'), 'Unauthorized management reference collections must be empty.');
+});
+
 $test('workspace exposes business setup, guidance and assignment management', static function () use ($assert): void {
     $view = file_get_contents(APP_ROOT . '/views/workspace.php');
     $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
