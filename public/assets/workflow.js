@@ -8,6 +8,12 @@
     const labels = { draft: 'پیش‌نویس', active: 'فعال', completed: 'تکمیل‌شده', open: 'آماده شروع', in_progress: 'در حال انجام', pending: 'منتظر پیش‌نیاز', disabled: 'غیرفعال', cancelled: 'لغوشده' };
     const viewTitles = { dashboard: 'نمای کلی', projects: 'پروژه‌ها', 'project-detail': 'جزئیات پروژه', tasks: 'وظایف', archives: 'آرشیوها', workflows: 'قالب‌های گردش‌کار', 'task-types': 'انواع وظیفه', customers: 'مشتری‌ها', teams: 'تیم‌ها', users: 'کاربران و نقش‌ها', guide: 'راهنمای سیستم', notifications: 'اعلان‌ها' };
     const permissionLabels = { 'system.admin': 'مدیریت کامل سیستم', 'users.manage': 'مدیریت کاربران', 'roles.manage': 'مدیریت نقش‌ها و دسترسی‌ها', 'templates.manage': 'مدیریت قالب و نوع وظیفه', 'orders.manage': 'مدیریت پروژه‌ها', 'tasks.manage': 'مدیریت همه تسک‌ها', 'tasks.work': 'انجام تسک‌های تخصیص‌یافته', 'teams.manage': 'مدیریت تیم‌ها', 'orders.read': 'مشاهده پروژه‌ها', 'catalog.manage': 'مدیریت کاتالوگ', 'crm.manage': 'مدیریت مشتری‌ها', 'hr.manage': 'مدیریت منابع انسانی', 'workflow.admin': 'مدیریت کامل گردش‌کار' };
+    const permissionGroups = [
+        ['مدیریت سامانه', ['system.admin', 'workflow.admin']],
+        ['افراد و ساختار', ['users.manage', 'roles.manage', 'teams.manage']],
+        ['پروژه و وظایف', ['orders.read', 'orders.manage', 'tasks.work', 'tasks.manage', 'templates.manage']],
+        ['سایر بخش‌ها', ['catalog.manage', 'crm.manage', 'hr.manage']],
+    ];
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
     const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
     const endpoint = path => new URL(`api/v1/workflow/${path.replace(/^\//, '')}`, document.baseURI).toString();
@@ -47,7 +53,9 @@
             data[key] = data[key] === undefined ? value : (Array.isArray(data[key]) ? [...data[key], value] : [data[key], value]);
         });
         form.querySelectorAll('select[multiple]').forEach(select => { data[select.name] = [...select.selectedOptions].map(option => select.dataset.options === 'permissions' ? option.value : Number(option.value)); });
-        form.querySelectorAll('input[type="checkbox"]').forEach(input => { data[input.name] = input.checked; });
+        form.querySelectorAll('input[type="checkbox"][name]').forEach(input => { data[input.name] = input.checked; });
+        if (form.querySelector('[data-role-options]')) data.role_ids = [...form.querySelectorAll('[data-role-choice]:checked')].map(input => Number(input.value));
+        if (form.querySelector('[data-permission-options]')) data.permissions = [...form.querySelectorAll('[data-permission-choice]:checked')].map(input => input.value);
         return data;
     }
 
@@ -82,6 +90,50 @@
             select.innerHTML = blank + items.map(item => `<option value="${type === 'permissions' ? esc(item.key_name) : Number(item.id)}">${esc(optionTitle(type, item))}</option>`).join('');
             [...select.options].forEach(option => { option.selected = selected.includes(option.value); });
         });
+    }
+
+    function permissionKeys(role) {
+        return String(role?.permission_keys || '').split(',').filter(Boolean);
+    }
+
+    function renderEffectivePermissions(form) {
+        const target = form.querySelector('[data-effective-permissions]');
+        if (!target) return;
+        if (!state.capabilities.roles_manage) {
+            target.innerHTML = '<small>نمایش جزئیات دسترسی‌ها به مجوز مدیریت نقش‌ها نیاز دارد.</small>';
+            return;
+        }
+        const selectedRoleIds = [...form.querySelectorAll('[data-role-choice]:checked')].map(input => Number(input.value));
+        const selectedRoles = (state.reference.roles || []).filter(role => selectedRoleIds.includes(Number(role.id)));
+        const keys = [...new Set(selectedRoles.flatMap(permissionKeys))];
+        if (keys.includes('system.admin')) {
+            target.innerHTML = '<strong>دسترسی مؤثر</strong><div class="tf-permission-chips"><span class="is-critical">مدیریت کامل سیستم؛ شامل همه دسترسی‌ها</span></div>';
+            return;
+        }
+        target.innerHTML = `<strong>دسترسی مؤثر</strong><div class="tf-permission-chips">${keys.map(key => `<span>${esc(permissionLabels[key] || key)}</span>`).join('') || '<em>نقشی انتخاب نشده است.</em>'}</div>`;
+    }
+
+    function renderRoleOptions(form, selectedIds = []) {
+        const target = form.querySelector('[data-role-options]');
+        if (!target) return;
+        const selected = selectedIds.map(Number);
+        const roles = (state.reference.roles || []).filter(role => Number(role.is_active ?? 1) === 1);
+        target.innerHTML = roles.map(role => `<label class="tf-choice-option"><input type="checkbox" value="${Number(role.id)}" data-role-choice ${selected.includes(Number(role.id)) ? 'checked' : ''}><span><strong>${esc(role.display_name)}</strong><small>${esc(role.key_name)}</small></span></label>`).join('') || '<p class="tf-muted">نقش فعالی وجود ندارد.</p>';
+        renderEffectivePermissions(form);
+    }
+
+    function renderPermissionOptions(form, selectedKeys = [], lockSystemAdmin = false) {
+        const target = form.querySelector('[data-permission-options]');
+        if (!target) return;
+        const selected = new Set(selectedKeys);
+        const permissions = state.reference.permissions || [];
+        const known = new Set(permissionGroups.flatMap(([, keys]) => keys));
+        const groups = [...permissionGroups, ['سایر دسترسی‌های ثبت‌شده', permissions.map(item => item.key_name).filter(key => !known.has(key))]];
+        target.innerHTML = groups.map(([title, keys]) => {
+            const items = keys.map(key => permissions.find(item => item.key_name === key)).filter(Boolean);
+            if (!items.length) return '';
+            return `<section><h3>${esc(title)}</h3>${items.map(item => { const locked = lockSystemAdmin && item.key_name === 'system.admin'; return `<label class="tf-choice-option"><input type="checkbox" value="${esc(item.key_name)}" data-permission-choice ${(selected.has(item.key_name) || locked) ? 'checked' : ''} ${locked ? 'disabled' : ''}><span><strong>${esc(permissionLabels[item.key_name] || item.display_name || item.key_name)}</strong><small>${esc(item.key_name)}</small></span></label>`; }).join('')}</section>`;
+        }).join('');
     }
 
     function applyCapabilities() {
@@ -314,8 +366,8 @@
         const users = root.querySelector('[data-user-list]');
         const roles = root.querySelector('[data-role-list]');
         if (teams) teams.innerHTML = (state.reference.teams || []).map(team => `<article><i>♟</i><span><strong>${esc(team.name)} · ${Number(team.member_count || 0).toLocaleString('fa-IR')} نفر</strong><small>${esc(team.member_names || team.description || 'هنوز عضوی ندارد')}</small></span>${statusBadge(Number(team.is_active) ? 'active' : 'disabled')}</article>`).join('') || '<div class="tf-empty small">گروهی وجود ندارد.</div>';
-        if (users) users.innerHTML = (state.reference.users || []).map(user => `<article><i>${esc(String(user.name).slice(0, 1))}</i><span><strong>${esc(user.name)}</strong><small>${esc(user.email)} · ${esc(user.role_names || 'بدون نقش')}</small><small>${Number(user.open_task_count || 0).toLocaleString('fa-IR')} تسک باز · آخرین ورود ${esc(user.last_login_at || 'ثبت نشده')}</small></span>${statusBadge(user.status)}${state.capabilities.users_manage ? `<button class="tf-link" data-edit-user="${Number(user.id)}">مدیریت</button>` : ''}</article>`).join('') || '<div class="tf-empty small">کاربری وجود ندارد.</div>';
-        if (roles) roles.innerHTML = (state.reference.roles || []).map(role => { const protectedRole = ['admin', 'manager', 'user'].includes(role.key_name); const details = state.capabilities.roles_manage ? `<small>${Number(role.user_count || 0).toLocaleString('fa-IR')} کاربر · ${esc(role.permission_keys ? String(role.permission_keys).split(',').map(key => permissionLabels[key] || key).join('، ') : 'بدون دسترسی')}</small>${role.user_names ? `<small>کاربران: ${esc(role.user_names)}</small>` : ''}` : '<small>نقش فعال قابل تخصیص به کاربران</small>'; return `<article><i>◎</i><span><strong>${esc(role.display_name)}</strong><small>${esc(role.key_name)}</small>${details}</span>${statusBadge(Number(role.is_active) ? 'active' : 'disabled')}${state.capabilities.roles_manage ? `<div class="tf-actions"><button data-edit-role="${Number(role.id)}">ویرایش</button><button data-clone-role="${Number(role.id)}">کپی</button>${protectedRole ? '' : `<button class="danger-text" data-delete-role="${Number(role.id)}">حذف</button>`}</div>` : ''}</article>`; }).join('') || '<div class="tf-empty small">نقشی وجود ندارد.</div>';
+        if (users) users.innerHTML = (state.reference.users || []).map(user => `<article><i>${esc(String(user.name).slice(0, 1))}</i><span><strong>${esc(user.name)}</strong><small>${esc(user.email)} · ${esc(user.role_names || 'بدون نقش')}</small><small>${Number(user.open_task_count || 0).toLocaleString('fa-IR')} تسک باز · آخرین ورود ${esc(user.last_login_at || 'ثبت نشده')}</small></span>${statusBadge(user.status)}${state.capabilities.users_manage ? `<button class="tf-link" type="button" data-edit-user="${Number(user.id)}">مدیریت کاربر</button>` : ''}</article>`).join('') || '<div class="tf-empty small">کاربری وجود ندارد.</div>';
+        if (roles) roles.innerHTML = (state.reference.roles || []).map(role => { const protectedRole = ['admin', 'manager', 'user'].includes(role.key_name); const keys = permissionKeys(role); const details = state.capabilities.roles_manage ? `<small>${Number(role.user_count || 0).toLocaleString('fa-IR')} کاربر${role.user_names ? ` · ${esc(role.user_names)}` : ''}</small><div class="tf-permission-chips">${keys.map(key => `<span>${esc(permissionLabels[key] || key)}</span>`).join('') || '<em>بدون دسترسی</em>'}</div>` : '<small>نقش فعال قابل تخصیص به کاربران</small>'; return `<article><i>◎</i><span><strong>${esc(role.display_name)}</strong><small>${esc(role.key_name)}</small>${details}</span>${statusBadge(Number(role.is_active) ? 'active' : 'disabled')}${state.capabilities.roles_manage ? `<div class="tf-actions"><button type="button" data-edit-role="${Number(role.id)}">ویرایش دسترسی‌ها</button><button type="button" data-clone-role="${Number(role.id)}">کپی نقش</button>${protectedRole ? '' : `<button type="button" class="danger-text" data-delete-role="${Number(role.id)}">حذف</button>`}</div>` : ''}</article>`; }).join('') || '<div class="tf-empty small">نقشی وجود ندارد.</div>';
     }
 
     function renderNotifications() {
@@ -344,8 +396,9 @@
     }
 
     function prepareUser(user) {
-        const form = root.querySelector('[data-edit-user]'); resetModalForm(form); fillOptions(form);
-        setForm(form, { ...user, user_id: user.id, role_ids: numericIds(user.role_ids) });
+        const form = root.querySelector('[data-user-edit-form]'); resetModalForm(form);
+        setForm(form, { ...user, user_id: user.id });
+        renderRoleOptions(form, numericIds(user.role_ids));
         root.querySelector('[data-user-edit-summary]').textContent = user.email;
         root.querySelector('[data-user-last-login]').textContent = user.last_login_at || 'ثبت نشده';
         root.querySelector('[data-user-teams]').textContent = user.team_names || 'عضو تیمی نیست';
@@ -355,19 +408,15 @@
     }
 
     function prepareRole(role = null, clone = false) {
-        const form = root.querySelector('[data-save-role]'); resetModalForm(form); fillOptions(form);
-        [...form.elements.permissions.options].forEach(option => { option.disabled = false; });
+        const form = root.querySelector('[data-save-role]'); resetModalForm(form);
         form.elements.is_active.checked = true;
         form.elements.is_active.disabled = false;
         form.elements.key_name.disabled = Boolean(role) && !clone;
         root.querySelector('[data-role-modal-title]').textContent = clone ? 'کپی نقش' : (role ? 'ویرایش نقش' : 'تعریف نقش جدید');
         root.querySelector('[data-role-modal-help]').textContent = clone ? 'یک کلید تازه وارد کن؛ دسترسی‌ها از نقش مبدأ کپی شده‌اند.' : 'دسترسی‌های نقش و وضعیت استفاده آن را مدیریت کن.';
-        if (role) setForm(form, { role_id: clone ? '' : role.id, key_name: clone ? '' : role.key_name, display_name: clone ? `${role.display_name} - کپی` : role.display_name, permissions: String(role.permission_keys || '').split(',').filter(Boolean), is_active: clone ? 1 : role.is_active });
+        if (role) setForm(form, { role_id: clone ? '' : role.id, key_name: clone ? '' : role.key_name, display_name: clone ? `${role.display_name} - کپی` : role.display_name, is_active: clone ? 1 : role.is_active });
         if (role && !clone && ['admin', 'manager', 'user'].includes(role.key_name)) form.elements.is_active.disabled = true;
-        if (role && !clone && role.key_name === 'admin') {
-            const fullAccess = [...form.elements.permissions.options].find(option => option.value === 'system.admin');
-            if (fullAccess) { fullAccess.selected = true; fullAccess.disabled = true; }
-        }
+        renderPermissionOptions(form, permissionKeys(role), Boolean(role && !clone && role.key_name === 'admin'));
         if (clone) form.dataset.cloneFrom = String(role.id); else delete form.dataset.cloneFrom;
         openModal('role');
     }
@@ -430,7 +479,7 @@
         if (event.target.closest('[data-open-task-type]')) { prepareTaskType(); return; }
         if (event.target.closest('[data-open-customer]')) { prepareCustomer(); return; }
         if (event.target.closest('[data-open-team]')) { const form = root.querySelector('[data-create-team]'); resetModalForm(form); openModal('team'); return; }
-        if (event.target.closest('[data-open-user]')) { const form = root.querySelector('[data-create-user]'); resetModalForm(form); fillOptions(form); openModal('user'); return; }
+        if (event.target.closest('[data-open-user]')) { const form = root.querySelector('[data-create-user]'); resetModalForm(form); renderRoleOptions(form); openModal('user'); return; }
         if (event.target.closest('[data-open-role]')) { prepareRole(); return; }
 
         const projectLink = event.target.closest('[data-project-open]');
@@ -616,6 +665,10 @@
         finally { action.disabled = false; }
     });
 
+    root.addEventListener('change', event => {
+        if (event.target.matches('[data-role-choice]')) renderEffectivePermissions(event.target.closest('form'));
+    });
+
     root.addEventListener('submit', async event => {
         const form = event.target;
         if (!(form instanceof HTMLFormElement)) return;
@@ -638,7 +691,7 @@
             else if (form.matches('[data-create-team]')) { await api('teams', { method: 'POST', body: values(form) }); closeModal(form); await loadReference(); }
             else if (form.matches('[data-team-member]')) { const data = values(form); const id = data.team_id; delete data.team_id; await api(`teams/${id}/members`, { method: 'POST', body: data }); form.reset(); await loadReference(); }
             else if (form.matches('[data-create-user]')) { await api('users', { method: 'POST', body: values(form) }); closeModal(form); await loadReference(); }
-            else if (form.matches('[data-edit-user]')) { const data = values(form); const id = data.user_id; delete data.user_id; await api(`users/${id}`, { method: 'POST', body: data }); closeModal(form); await loadReference(); }
+            else if (form.matches('[data-user-edit-form]')) { const data = values(form); const id = data.user_id; delete data.user_id; await api(`users/${id}`, { method: 'POST', body: data }); closeModal(form); await loadReference(); }
             else if (form.matches('[data-save-role]')) { const data = values(form); const id = data.role_id; const cloneFrom = form.dataset.cloneFrom; delete data.role_id; const path = id ? `roles/${id}` : (cloneFrom ? `roles/${cloneFrom}/clone` : 'roles'); await api(path, { method: 'POST', body: data }); closeModal(form); await loadReference(); }
             else if (form.matches('[data-project-member]')) { const id = form.dataset.projectMember; await api(`projects/${id}/members`, { method: 'POST', body: values(form) }); form.reset(); await Promise.all([loadReference(), loadProjects()]); await showProject(id); }
             else if (form.matches('[data-project-attachment]')) { const id = form.dataset.projectAttachment; await api(`projects/${id}/attachments`, { method: 'POST', body: new FormData(form) }); form.reset(); await showProject(id); }

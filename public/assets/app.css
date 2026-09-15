@@ -561,6 +561,26 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-role-list article { align-items: flex-start; }
 .tf-role-list article > span { gap: 2px; flex: 1; }
 .tf-role-list .tf-actions { flex-wrap: wrap; justify-content: flex-end; }
+.tf-choice-field { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 14px; border: 1px solid #e2e7f0; border-radius: 12px; }
+.tf-choice-field legend { padding: 0 7px; color: #4c586e; font-size: 12px; font-weight: 900; }
+.tf-choice-field > small { color: #7d8799; font-size: 10px; line-height: 1.8; }
+.tf-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tf-choice-option { display: flex !important; min-width: 0; cursor: pointer; align-items: flex-start !important; gap: 9px !important; padding: 10px; border: 1px solid #e5e9f1; border-radius: 10px; background: #fafbfc; }
+.tf-choice-option:has(input:checked) { border-color: #9cadf1; background: #f0f3ff; box-shadow: inset 0 0 0 1px rgba(73,105,232,.08); }
+.tf-choice-option input { width: 16px !important; min-height: 16px !important; margin-top: 2px; accent-color: var(--tf-blue); }
+.tf-choice-option span { display: grid; min-width: 0; }
+.tf-choice-option strong { color: #37445a; font-size: 11px; }
+.tf-choice-option small { overflow-wrap: anywhere; color: #8a94a7; font-size: 9px; font-weight: 500; }
+.tf-permission-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.tf-permission-grid section { display: grid; align-content: start; gap: 7px; }
+.tf-permission-grid h3 { margin: 0 0 2px; color: #5c687d; font-size: 11px; }
+.tf-permission-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.tf-permission-chips span { padding: 3px 7px; border-radius: 999px; background: #edf1ff; color: #4660c8; font-size: 9px; line-height: 1.5; }
+.tf-permission-chips span.is-critical { background: #fff0ef; color: #b63731; }
+.tf-permission-chips em { color: #919aab; font-size: 10px; font-style: normal; }
+.tf-effective-access { display: grid; gap: 5px; padding: 11px 13px; border-radius: 11px; background: #f5f7fb; }
+.tf-effective-access > strong { color: #4e5a70; font-size: 11px; }
+.tf-effective-access > small { color: #7d8799; font-size: 10px; }
 .span-all { grid-column: 1 / -1; }
 
 @media (max-width: 1120px) {
@@ -597,6 +617,7 @@ button.tf-row:hover { background: #fafbfe; }
     .tf-user-facts { grid-template-columns: 1fr 1fr; }
     .tf-role-list article { flex-wrap: wrap; }
     .tf-role-list .tf-actions { width: 100%; justify-content: flex-start; margin-right: 45px; }
+    .tf-choice-grid, .tf-permission-grid { grid-template-columns: 1fr; }
 }
 
 /* TaskFlow design system v3 ------------------------------------------------ */
