@@ -370,10 +370,12 @@ final class WorkflowEngine
         $users = Table::name('users');
         $direct = Table::name('workflow_template_step_users');
         $stepTeams = Table::name('workflow_template_step_teams');
+        $teams = Table::name('teams');
         $teamMembers = Table::name('team_members');
         $stepRoles = Table::name('workflow_template_step_roles');
+        $roles = Table::name('roles');
         $userRoles = Table::name('user_roles');
-        $sql = "SELECT DISTINCT u.id FROM {$users} u WHERE u.status='active' AND u.deleted_at IS NULL AND (EXISTS (SELECT 1 FROM {$direct} d WHERE d.step_id=? AND d.user_id=u.id) OR EXISTS (SELECT 1 FROM {$stepTeams} st JOIN {$teamMembers} tm ON tm.team_id=st.team_id WHERE st.step_id=? AND tm.user_id=u.id) OR EXISTS (SELECT 1 FROM {$stepRoles} sr JOIN {$userRoles} ur ON ur.role_id=sr.role_id WHERE sr.step_id=? AND ur.user_id=u.id))";
+        $sql = "SELECT DISTINCT u.id FROM {$users} u WHERE u.status='active' AND u.deleted_at IS NULL AND (EXISTS (SELECT 1 FROM {$direct} d WHERE d.step_id=? AND d.user_id=u.id) OR EXISTS (SELECT 1 FROM {$stepTeams} st JOIN {$teams} team ON team.id=st.team_id AND team.is_active=1 JOIN {$teamMembers} tm ON tm.team_id=st.team_id WHERE st.step_id=? AND tm.user_id=u.id) OR EXISTS (SELECT 1 FROM {$stepRoles} sr JOIN {$roles} role ON role.id=sr.role_id AND role.is_active=1 JOIN {$userRoles} ur ON ur.role_id=sr.role_id WHERE sr.step_id=? AND ur.user_id=u.id))";
         $statement = Connection::get()->prepare($sql);
         $statement->execute([$templateStepId, $templateStepId, $templateStepId]);
         $defaultIds = array_values(array_unique(array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN))));

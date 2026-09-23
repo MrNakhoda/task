@@ -369,7 +369,12 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-row-progress { margin-right: auto; color: var(--tf-blue); font-weight: 900; }
 .tf-check-dot { width: 17px; height: 17px; flex: none; border: 2px solid #b7c1d3; border-radius: 50%; }
 .tf-filters { display: grid; grid-template-columns: minmax(220px, 1fr) 180px 180px auto; gap: 9px; margin-bottom: 18px; padding: 12px; border: 1px solid var(--tf-line); border-radius: 13px; background: #fff; }
-.tf-filters.task-filters { grid-template-columns: repeat(4, minmax(140px, 1fr)) auto; }
+.tf-filters.task-filters { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.tf-filters label { display: grid; gap: 4px; color: #667085; font-size: 10px; font-weight: 800; }
+.tf-filter-actions { display: flex; align-items: end; gap: 8px; }
+.tf-team-member-list { padding: 12px 0; }
+.tf-team-member-list > span { width: 100%; border-radius: 10px; }
+.tf-team-member-list > span > button:first-of-type { margin-right: auto; }
 .tf-context-help { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; padding: 11px 14px; border: 1px solid #dbe3f9; border-radius: 11px; background: #f6f8ff; color: #66738d; font-size: 10px; }
 .tf-context-help b { flex: none; color: #354d9d; }
 .tf-context-help button { margin-right: auto; white-space: nowrap; }

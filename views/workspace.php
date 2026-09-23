@@ -23,7 +23,7 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
         <nav class="tf-nav">
             <div class="tf-nav-label">کارهای روزانه</div>
             <button class="is-active" data-nav-view="dashboard" type="button"><svg><use href="#tf-i-home"/></svg> نمای کلی</button>
-            <button data-nav-view="projects" type="button"><svg><use href="#tf-i-project"/></svg> پروژه‌ها</button>
+            <button data-nav-view="projects" data-view-requires="orders_read" type="button" hidden><svg><use href="#tf-i-project"/></svg> پروژه‌ها</button>
             <button data-nav-view="tasks" type="button"><svg><use href="#tf-i-task"/></svg> وظایف</button>
             <button data-nav-view="archives" type="button"><svg><use href="#tf-i-flow"/></svg> آرشیوها</button>
             <div class="tf-nav-label" data-management-nav data-requires-any="templates_manage,projects_manage,teams_manage,users_manage,roles_manage" hidden>راه‌اندازی و مدیریت</div>
@@ -64,12 +64,12 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
                 <article><i class="purple">◉</i><div><span>اعلان جدید</span><strong data-metric="notifications_unread">—</strong></div></article>
             </div>
             <div class="tf-dashboard-grid">
-                <section class="tf-card"><div class="tf-card-head"><div><h2>پروژه‌های اخیر</h2><p>برای دیدن مراحل روی پروژه کلیک کن</p></div><button class="tf-link" data-go="projects">مشاهده همه</button></div><div data-dashboard-projects></div></section>
+                <section class="tf-card" data-requires="orders_read" hidden><div class="tf-card-head"><div><h2>پروژه‌های اخیر</h2><p>برای دیدن مراحل روی پروژه کلیک کن</p></div><button class="tf-link" data-go="projects">مشاهده همه</button></div><div data-dashboard-projects></div></section>
                 <section class="tf-card"><div class="tf-card-head"><div><h2>وظایف فوری</h2><p>تسک‌های پروژه و تسک‌های مستقل</p></div><button class="tf-link" data-go="tasks">مشاهده همه</button></div><div data-dashboard-tasks></div></section>
             </div>
         </section>
 
-        <section class="tf-view" data-view="projects">
+        <section class="tf-view" data-view="projects" data-view-requires="orders_read" hidden>
             <div class="tf-page-head"><div><span>اجرای کار</span><h1>پروژه‌ها</h1><p>هر پروژه اعضا، مراحل، پیش‌نیاز، فایل و درصد پیشرفت خودش را دارد.</p></div><div class="tf-head-actions"><button class="tf-button secondary" type="button" data-go="archives">آرشیو پروژه‌ها</button><button class="tf-button" type="button" data-open-project data-requires="projects_manage" hidden>+ ساخت پروژه</button></div></div>
             <div class="tf-context-help"><b>پروژه چیست؟</b><span>یک کار چندمرحله‌ای مثل «انگشتر گلوریا». قالب و اعضا را انتخاب کن، سپس با شروع پروژه تسک‌ها خودکار ساخته می‌شوند.</span><button data-go="guide">راهنمای کامل</button></div>
             <form class="tf-filters" data-project-filters><input name="search" placeholder="نام یا کد پروژه"><select name="status"><option value="">همه وضعیت‌ها</option><option value="draft">پیش‌نویس</option><option value="active">در حال اجرا</option><option value="completed">تکمیل‌شده</option></select><select name="priority_id" data-options="priorities"><option value="">همه اولویت‌ها</option></select><button class="tf-button secondary">فیلتر</button></form>
@@ -81,14 +81,14 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
         <section class="tf-view" data-view="tasks">
             <div class="tf-page-head"><div><span>کارهای اجرایی</span><h1>وظایف</h1><p>وظایف آماده، در حال انجام و تکمیل‌شده تا زمان آرشیو در همین برد باقی می‌مانند.</p></div><div class="tf-head-actions"><button class="tf-button secondary" type="button" data-go="archives">آرشیو وظایف</button><button class="tf-button" type="button" data-open-quick-task data-requires="tasks_manage" hidden>+ تسک مستقل</button></div></div>
             <div class="tf-context-help"><b>دو نوع تسک داریم</b><span>تسک پروژه‌ای از مرحله پروژه ساخته می‌شود؛ تسک مستقل مثل «خرید سنگ» بدون پروژه ساخته می‌شود. در تخصیص چندنفره، تأیید یک نفر کافی است.</span></div>
-            <form class="tf-filters task-filters" data-task-filters><select name="status"><option value="">همه وظایف جاری</option><option value="open">آماده شروع</option><option value="in_progress">در حال انجام</option><option value="completed">انجام‌شده</option></select><select name="task_type_id" data-options="task_types"><option value="">همه نوع وظیفه‌ها</option></select><select name="order_id" data-task-project-filter><option value="">همه پروژه‌ها</option></select><input name="customer" placeholder="نام مشتری"><button class="tf-button secondary">فیلتر</button></form>
+            <form class="tf-filters task-filters" data-task-filters><input name="search" placeholder="جست‌وجوی عنوان یا توضیحات"><select name="scope"><option value="">پروژه‌ای و مستقل</option><option value="project">فقط پروژه‌ای</option><option value="standalone">فقط مستقل / بدون پروژه</option></select><select name="status"><option value="">همه وضعیت‌ها</option><option value="open">آماده شروع</option><option value="in_progress">در حال انجام</option><option value="completed">انجام‌شده</option></select><select name="task_type_id" data-options="task_types"><option value="">همه نوع وظیفه‌ها</option></select><select name="order_id" data-task-project-filter><option value="">همه پروژه‌ها</option></select><label data-requires="tasks_manage" hidden><span>مسئول</span><select name="assignee_user_id" data-options="users"><option value="">همه افراد</option></select></label><label data-requires="tasks_manage" hidden><span>تیم مسئول</span><select name="assignee_team_id" data-options="teams"><option value="">همه تیم‌ها</option></select></label><input name="customer" placeholder="نام مشتری"><div class="tf-filter-actions"><button class="tf-button secondary">اعمال فیلتر</button><button class="tf-button ghost" type="button" data-reset-task-filters>پاک‌کردن</button></div></form>
             <div class="tf-task-columns" data-task-board></div>
         </section>
 
         <section class="tf-view" data-view="archives">
             <div class="tf-page-head"><div><span>نگهداری بدون شلوغی</span><h1>آرشیوها</h1><p>پروژه‌ها و وظایف آرشیوشده همراه گزارش‌ها، تصاویر و تاریخچه حفظ می‌شوند.</p></div></div>
             <div class="tf-archive-stack">
-                <section class="tf-card"><div class="tf-card-head"><div><h2>پروژه‌های آرشیوشده</h2><p>فقط پروژه تکمیل‌شده به این بخش منتقل می‌شود.</p></div></div><div class="tf-project-grid" data-archived-project-list></div></section>
+                <section class="tf-card" data-requires="orders_read" hidden><div class="tf-card-head"><div><h2>پروژه‌های آرشیوشده</h2><p>فقط پروژه تکمیل‌شده به این بخش منتقل می‌شود.</p></div></div><div class="tf-project-grid" data-archived-project-list></div></section>
                 <section class="tf-card"><div class="tf-card-head"><div><h2>وظایف آرشیوشده</h2><p>گزارش و سابقه هر وظیفه همچنان قابل مشاهده است.</p></div></div><div class="tf-task-archive-list" data-archived-task-list></div></section>
             </div>
         </section>
@@ -112,14 +112,13 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
 
         <section class="tf-view" data-view="teams" data-view-requires="teams_manage" hidden>
             <div class="tf-page-head"><div><span>گروه‌بندی شرکت</span><h1>تیم‌ها</h1><p>مثلاً تیم طراحی یا تولید؛ هر کاربر می‌تواند در چند تیم باشد.</p></div><button class="tf-button" data-open-team data-requires="teams_manage" hidden>+ گروه جدید</button></div>
-            <div class="tf-split"><section class="tf-card"><div class="tf-card-head"><div><h2>گروه‌ها</h2><p>اعضای هر گروه زیر نام آن دیده می‌شوند</p></div></div><div class="tf-entity-list" data-team-list></div></section><section class="tf-card"><div class="tf-card-head"><div><h2>افزودن عضو به گروه</h2><p>این تیم‌ها در تخصیص مراحل قالب قابل انتخاب‌اند.</p></div></div><form class="tf-form" data-team-member data-requires="teams_manage"><label>گروه<select name="team_id" data-options="teams" required></select></label><label>کاربر<select name="user_id" data-options="users" required></select></label><label class="tf-check"><input type="checkbox" name="is_lead"> سرگروه باشد</label><button class="tf-button">افزودن عضو</button></form></section></div>
+            <div class="tf-split"><section class="tf-card"><div class="tf-card-head"><div><h2>گروه‌ها</h2><p>نام، وضعیت، اعضا و سرگروه‌ها را مدیریت کن.</p></div></div><div class="tf-entity-list" data-team-list></div></section><section class="tf-card"><div class="tf-card-head"><div><h2>افزودن عضو به گروه</h2><p>افزودن دوباره همان کاربر، وضعیت سرگروهی او را به‌روزرسانی می‌کند.</p></div></div><form class="tf-form" data-team-member data-requires="teams_manage"><label>گروه<select name="team_id" data-options="teams" required></select></label><label>کاربر<select name="user_id" data-options="users" required></select></label><label class="tf-check"><input type="checkbox" name="is_lead"> سرگروه باشد</label><button class="tf-button">ذخیره عضویت</button></form></section></div>
         </section>
 
         <section class="tf-view" data-view="users" data-view-requires="users_manage,roles_manage" hidden>
             <div class="tf-page-head"><div><span>افراد و دسترسی</span><h1>کاربران و نقش‌ها</h1><p>هر کاربر می‌تواند چند نقش داشته باشد؛ حساب‌ها برای حفظ تاریخچه حذف نمی‌شوند.</p></div><div class="tf-head-actions"><button class="tf-button secondary" data-open-role data-requires="roles_manage" hidden>+ نقش جدید</button><button class="tf-button" data-open-user data-requires="users_manage" hidden>+ حساب جدید</button></div></div>
             <div class="tf-context-help"><b>روش صحیح مدیریت دسترسی</b><span>دسترسی‌ها روی «نقش» تنظیم می‌شوند و سپس یک یا چند نقش به کاربر داده می‌شود. برای کم‌وزیادکردن دسترسی، «ویرایش دسترسی‌ها» را روی نقش بزن؛ برای تغییر دسترسی یک فرد، نقش‌های او را از «مدیریت کاربر» تغییر بده.</span></div>
             <div class="tf-split"><section class="tf-card"><div class="tf-card-head"><div><h2>کاربران</h2><p>اطلاعات، نقش‌ها، وضعیت و رمز عبور را مدیریت کن.</p></div></div><div class="tf-user-list" data-user-list></div></section><section class="tf-card"><div class="tf-card-head"><div><h2>نقش‌ها و دسترسی‌ها</h2><p>دسترسی‌های هر نقش را ببین، اضافه یا کم کن و نقش را به کاربران بده.</p></div></div><div class="tf-entity-list tf-role-list" data-role-list></div></section></div>
-            <section class="tf-danger-zone" data-admin-only hidden><div><strong>پاک‌سازی داده‌های تست</strong><p>پروژه‌ها، تسک‌ها، قالب‌ها، انواع وظیفه، تیم‌ها، مشتری‌ها و اعلان‌ها پاک می‌شوند؛ کاربران، نقش‌ها، دسترسی‌ها و اولویت‌های پایه باقی می‌مانند.</p></div><button class="tf-button danger" type="button" data-wipe-workspace>پاک‌سازی کامل</button></section>
         </section>
 
         <section class="tf-view" data-view="guide">
@@ -149,7 +148,7 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
 
     <nav class="tf-mobile-nav" aria-label="دسترسی سریع">
         <button class="is-active" data-nav-view="dashboard" type="button"><svg><use href="#tf-i-home"/></svg><span>خانه</span></button>
-        <button data-nav-view="projects" type="button"><svg><use href="#tf-i-project"/></svg><span>پروژه‌ها</span></button>
+        <button data-nav-view="projects" data-view-requires="orders_read" type="button" hidden><svg><use href="#tf-i-project"/></svg><span>پروژه‌ها</span></button>
         <button data-nav-view="tasks" type="button"><svg><use href="#tf-i-task"/></svg><span>وظایف</span></button>
         <button data-nav-view="notifications" type="button"><span class="tf-mobile-bell"><svg><use href="#tf-i-bell"/></svg><b data-nav-notifications></b></span><span>اعلان‌ها</span></button>
     </nav>
@@ -172,7 +171,7 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
 
     <dialog class="tf-dialog" data-modal="customer"><form method="dialog" class="tf-modal-card compact" data-save-customer><header><div><h2 data-customer-title>مشتری جدید</h2><p>بعداً در پروژه قابل انتخاب است.</p></div><button type="button" data-close-modal>×</button></header><input type="hidden" name="customer_id"><label>نام مشتری<input name="name" required></label><label>تلفن<input name="phone"></label><label>ایمیل<input name="email" type="email"></label><label>یادداشت<textarea name="notes" rows="3"></textarea></label><footer><button type="button" class="tf-button ghost" data-close-modal>انصراف</button><button class="tf-button">ذخیره مشتری</button></footer></form></dialog>
 
-    <dialog class="tf-dialog" data-modal="team"><form method="dialog" class="tf-modal-card compact" data-create-team><header><div><h2>ساخت گروه</h2><p>مثلاً تیم طراحی</p></div><button type="button" data-close-modal>×</button></header><label>نام گروه<input name="name" required></label><label>توضیحات<textarea name="description"></textarea></label><footer><button type="button" class="tf-button ghost" data-close-modal>انصراف</button><button class="tf-button">ساخت گروه</button></footer></form></dialog>
+    <dialog class="tf-dialog" data-modal="team"><form method="dialog" class="tf-modal-card compact" data-save-team><header><div><h2 data-team-modal-title>ساخت گروه</h2><p data-team-modal-help>مثلاً تیم طراحی</p></div><button type="button" data-close-modal>×</button></header><input type="hidden" name="team_id"><label>نام گروه<input name="name" required></label><label>توضیحات<textarea name="description"></textarea></label><label class="tf-check"><input type="checkbox" name="is_active" checked> تیم فعال باشد</label><section data-team-member-section hidden><strong>اعضای فعلی</strong><div class="tf-member-pills tf-team-member-list" data-team-members></div><small>غیرفعال‌کردن تیم، تخصیص‌های قبلی را تغییر نمی‌دهد و فقط انتخاب‌های آینده را متوقف می‌کند.</small></section><footer><button type="button" class="tf-button ghost" data-close-modal>انصراف</button><button class="tf-button">ذخیره گروه</button></footer></form></dialog>
 
     <dialog class="tf-dialog" data-modal="user"><form method="dialog" class="tf-modal-card compact" data-create-user><header><div><h2>حساب کاربری جدید</h2><p>یک یا چند نقش انتخاب کن؛ دسترسی مؤثر از مجموع نقش‌ها ساخته می‌شود.</p></div><button type="button" data-close-modal>×</button></header><label>نام<input name="name" required></label><label>ایمیل<input name="email" type="email" required></label><label>رمز عبور<input name="password" type="password" minlength="10" required></label><fieldset class="tf-choice-field"><legend>نقش‌های کاربر</legend><div class="tf-choice-grid" data-role-options></div><small>حداقل یک نقش فعال انتخاب کن.</small></fieldset><div class="tf-effective-access" data-effective-permissions></div><footer><button type="button" class="tf-button ghost" data-close-modal>انصراف</button><button class="tf-button">ساخت حساب</button></footer></form></dialog>
 

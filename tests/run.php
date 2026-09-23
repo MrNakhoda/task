@@ -109,7 +109,7 @@ $test('workflow engine implements automatic dependency progression', static func
 $test('workflow API exposes project task and administration endpoints', static function () use ($assert): void {
     $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
     $assert(is_string($source));
-    foreach (['/projects', '/projects/{id}/activate', '/projects/{id}/delete', '/projects/{id}/members/remove', '/projects/{id}/attachments', '/tasks', '/tasks/{id}', '/tasks/{id}/assignees', '/tasks/{id}/complete', '/task-types/{id}', '/task-types/{id}/delete', '/customers/{id}', '/templates/{id}/steps', '/templates/{id}/delete', '/admin/wipe', '/teams/{id}/members', '/users', '/notifications'] as $route) {
+    foreach (['/projects', '/projects/{id}/activate', '/projects/{id}/delete', '/projects/{id}/members/remove', '/projects/{id}/attachments', '/tasks', '/tasks/{id}', '/tasks/{id}/assignees', '/tasks/{id}/complete', '/task-types/{id}', '/task-types/{id}/delete', '/customers/{id}', '/templates/{id}/steps', '/template-steps/{id}/delete', '/templates/{id}/delete', '/teams/{id}', '/teams/{id}/members', '/teams/{id}/members/remove', '/users', '/notifications'] as $route) {
         $assert(str_contains($source, $route), 'Missing API route: ' . $route);
     }
     $assert(str_contains($source, 'createWorkflowProject'));
@@ -128,7 +128,7 @@ $test('archive, member access, user and role safeguards are wired end to end', s
     }
     $assert(str_contains($module, "\$permission('roles.manage')"));
     $assert(
-        str_contains($module, 'use ($repository, $actor, $allows, $mayManageProjects, $mayManageTasks, $isSystemAdmin)'),
+        str_contains($module, '$mayWorkTasks, $mayReadProjects, $isSystemAdmin'),
         'The workflow reference endpoint must capture the system-admin capability callback.'
     );
     $assert(is_string($repository) && str_contains($repository, 'assertFullAdministratorRemains'));
@@ -215,7 +215,7 @@ $test('management navigation and reference data follow effective permissions', s
     $view = file_get_contents(APP_ROOT . '/views/workspace.php');
     $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
     $assert(is_string($view) && str_contains($view, 'data-view="users" data-view-requires="users_manage,roles_manage"'));
-    foreach (['workflows" data-view-requires="templates_manage', 'customers" data-view-requires="projects_manage', 'teams" data-view-requires="teams_manage'] as $guard) {
+    foreach (['projects" data-view-requires="orders_read', 'workflows" data-view-requires="templates_manage', 'customers" data-view-requires="projects_manage', 'teams" data-view-requires="teams_manage'] as $guard) {
         $assert(str_contains($view, $guard), 'Missing management view guard: ' . $guard);
     }
     $assert(is_string($javascript) && str_contains($javascript, 'function canView(view)'));
@@ -275,17 +275,53 @@ $test('workspace ships a unified responsive interface', static function () use (
     $assert(is_string($routes) && str_contains($routes, "Response::redirect(\$auth->user() === null ? '/login' : '/workspace')"));
 });
 
-$test('admin wipe preserves accounts and access control', static function () use ($assert): void {
-    $source = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
-    $assert(is_string($source) && str_contains($source, 'wipeTestData'));
-    $start = strpos($source, 'public function wipeTestData');
-    $end = strpos($source, 'public function createCustomer', $start);
-    $wipe = substr($source, $start, $end - $start);
-    $assert(str_contains($wipe, "Table::name('task_types')"));
-    $assert(str_contains($wipe, "DELETE FROM {\$tables['task_types']}"));
-    $assert(!str_contains($wipe, "Table::name('users')"));
-    $assert(!str_contains($wipe, "Table::name('roles')"));
-    $assert(!str_contains($wipe, "Table::name('permissions')"));
+$test('task filters, team management and template step deletion are wired safely', static function () use ($assert): void {
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $engine = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowEngine.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $migration = file_get_contents(APP_ROOT . '/database/modules/workflow/005_task_access_and_team_management.sql');
+    foreach (['scope', 'assignee_user_id', 'assignee_team_id', 'search'] as $filter) {
+        $assert(is_string($module) && str_contains($module, "'{$filter}' => \$request->query"), 'Missing task filter: ' . $filter);
+    }
+    $assert(is_string($repository) && str_contains($repository, "filtered_member.team_id=?"));
+    $assert(str_contains($repository, 'public function updateTeam'));
+    $assert(str_contains($repository, 'public function removeTeamMember'));
+    $assert(str_contains($repository, 'public function deleteTemplateStep'));
+    $assert(str_contains($repository, 'ابتدا وابستگی این مراحل را بردارید'));
+    $assert(is_string($engine) && str_contains($engine, 'team.is_active=1'));
+    $assert(str_contains($engine, 'role.is_active=1'));
+    $assert(is_string($view) && str_contains($view, 'فقط مستقل / بدون پروژه'));
+    $assert(str_contains($view, 'data-save-team'));
+    $assert(is_string($javascript) && str_contains($javascript, 'data-delete-template-stage'));
+    $assert(str_contains($javascript, 'data-remove-team-member'));
+    $assert(is_string($migration) && str_contains($migration, "p.key_name IN ('orders.read','orders.manage','tasks.work'"));
+    $assert(str_contains($migration, "r.key_name = 'user'"));
+});
+
+$test('task work and project read permissions are enforced', static function () use ($assert): void {
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $assert(is_string($module) && str_contains($module, "\$taskWorkPermission = \$anyPermission(['tasks.manage', 'tasks.work'])"));
+    $assert(str_contains($module, "\$projectReadPermission = \$anyPermission(['orders.manage', 'orders.read'])"));
+    $assert(substr_count($module, '$taskWorkPermission') >= 4, 'All three task work routes must use the permission middleware.');
+    $assert(substr_count($module, '$projectReadPermission') >= 5, 'Project list and detail routes must use read permission middleware.');
+    $assert(is_string($repository) && str_contains($repository, 'bool $canWorkAssigned'));
+    $assert(str_contains($repository, "\$canWorkAssigned ? \"EXISTS"));
+});
+
+$test('dangerous test-data wipe is absent from production workspace', static function () use ($assert): void {
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    foreach ([$module, $repository, $view, $javascript] as $source) {
+        $assert(is_string($source));
+        $assert(!str_contains($source, 'wipeTestData'));
+        $assert(!str_contains($source, 'admin/wipe'));
+        $assert(!str_contains($source, 'data-wipe-workspace'));
+    }
 });
 
 $failures = 0;

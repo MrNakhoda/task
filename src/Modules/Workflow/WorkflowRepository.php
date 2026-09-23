@@ -21,7 +21,7 @@ final class WorkflowRepository
     {
     }
 
-    public function overview(int $userId, bool $manageProjects, bool $manageTasks): array
+    public function overview(int $userId, bool $manageProjects, bool $manageTasks, bool $readProjects = true): array
     {
         $orders = Table::name('work_orders');
         $projectMembers = Table::name('project_members');
@@ -29,7 +29,7 @@ final class WorkflowRepository
         $assignees = Table::name('task_assignees');
         $notifications = Table::name('user_notifications');
         $taskWhere = $manageTasks ? '' : " AND EXISTS (SELECT 1 FROM {$assignees} ta WHERE ta.task_id=t.id AND ta.user_id=" . (int) $userId . ')';
-        $orderWhere = $manageProjects ? '' : " AND EXISTS (SELECT 1 FROM {$projectMembers} pm WHERE pm.project_id=o.project_id AND pm.user_id=" . (int) $userId . ')';
+        $orderWhere = !$readProjects ? ' AND 1=0' : ($manageProjects ? '' : " AND EXISTS (SELECT 1 FROM {$projectMembers} pm WHERE pm.project_id=o.project_id AND pm.user_id=" . (int) $userId . ')');
         $pdo = Connection::get();
 
         return [
@@ -64,20 +64,21 @@ final class WorkflowRepository
         $manageTasks = (bool) ($access['tasks_manage'] ?? false);
         $manageTemplates = (bool) ($access['templates_manage'] ?? false);
         $manageTeams = (bool) ($access['teams_manage'] ?? false);
+        $readProjects = (bool) ($access['orders_read'] ?? false);
         $canAssignPeople = $manageProjects || $manageTasks || $manageTemplates || $manageTeams;
         $fullPeopleDetails = $manageUsers || $manageRoles;
-        $projectScope = $manageProjects ? '' : ' AND EXISTS (SELECT 1 FROM ' . $projectMembers . ' pm WHERE pm.project_id=o.project_id AND pm.user_id=' . (int) $userId . ')';
+        $projectScope = !$readProjects ? ' AND 1=0' : ($manageProjects ? '' : ' AND EXISTS (SELECT 1 FROM ' . $projectMembers . ' pm WHERE pm.project_id=o.project_id AND pm.user_id=' . (int) $userId . ')');
         $userSql = $fullPeopleDetails
             ? "SELECT u.id,u.name,u.email,u.status,u.last_login_at,(SELECT GROUP_CONCAT(r.display_name ORDER BY r.id SEPARATOR '، ') FROM {$userRoles} ur JOIN {$roles} r ON r.id=ur.role_id WHERE ur.user_id=u.id) role_names,(SELECT GROUP_CONCAT(ur.role_id ORDER BY ur.role_id) FROM {$userRoles} ur WHERE ur.user_id=u.id) role_ids,(SELECT GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR '، ') FROM {$teamMembers} tm JOIN {$teams} t ON t.id=tm.team_id WHERE tm.user_id=u.id) team_names,(SELECT GROUP_CONCAT(DISTINCT o.title ORDER BY o.title SEPARATOR '، ') FROM {$projectMembers} pm JOIN {$orders} o ON o.project_id=pm.project_id WHERE pm.user_id=u.id AND o.deleted_at IS NULL) project_names,(SELECT COUNT(*) FROM {$assignees} ta JOIN {$tasks} tk ON tk.id=ta.task_id WHERE ta.user_id=u.id AND tk.status IN ('open','in_progress')) open_task_count FROM {$users} u WHERE u.deleted_at IS NULL ORDER BY u.name"
-            : "SELECT u.id,u.name,u.email,u.status,u.last_login_at,NULL role_names,NULL role_ids,NULL team_names,NULL project_names,0 open_task_count FROM {$users} u WHERE u.deleted_at IS NULL AND " . ($canAssignPeople ? "u.status='active'" : 'u.id=' . (int) $userId) . ' ORDER BY u.name';
+            : "SELECT u.id,u.name,u.email,u.status,u.last_login_at,NULL role_names,NULL role_ids,NULL team_names,NULL project_names,0 open_task_count FROM {$users} u WHERE u.deleted_at IS NULL AND " . ($manageTeams ? '1=1' : ($canAssignPeople ? "u.status='active'" : 'u.id=' . (int) $userId)) . ' ORDER BY u.name';
         $roleSql = $manageRoles
             ? "SELECT r.id,r.key_name,r.display_name,r.is_active,(SELECT COUNT(*) FROM {$userRoles} ur WHERE ur.role_id=r.id) user_count,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$userRoles} ur JOIN {$users} u ON u.id=ur.user_id WHERE ur.role_id=r.id AND u.deleted_at IS NULL) user_names,(SELECT GROUP_CONCAT(p.key_name ORDER BY p.id) FROM {$rolePermissions} rp JOIN {$permissions} p ON p.id=rp.permission_id WHERE rp.role_id=r.id) permission_keys,(SELECT GROUP_CONCAT(p.display_name ORDER BY p.id SEPARATOR '، ') FROM {$rolePermissions} rp JOIN {$permissions} p ON p.id=rp.permission_id WHERE rp.role_id=r.id) permission_names FROM {$roles} r ORDER BY r.id"
             : (($manageUsers || $manageTemplates)
                 ? "SELECT id,key_name,display_name,is_active FROM {$roles} WHERE is_active=1 ORDER BY id"
                 : "SELECT id,key_name,display_name,is_active FROM {$roles} WHERE 1=0");
         $teamSql = $manageTeams
-            ? "SELECT t.id,t.name,t.description,t.is_active,(SELECT COUNT(*) FROM {$teamMembers} tm WHERE tm.team_id=t.id) member_count,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$teamMembers} tm JOIN {$users} u ON u.id=tm.user_id WHERE tm.team_id=t.id) member_names FROM {$teams} t ORDER BY t.name"
-            : ($manageTemplates
+            ? "SELECT t.id,t.name,t.description,t.is_active,(SELECT COUNT(*) FROM {$teamMembers} tm WHERE tm.team_id=t.id) member_count,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$teamMembers} tm JOIN {$users} u ON u.id=tm.user_id WHERE tm.team_id=t.id) member_names,(SELECT GROUP_CONCAT(tm.user_id ORDER BY tm.user_id) FROM {$teamMembers} tm WHERE tm.team_id=t.id) member_ids,(SELECT GROUP_CONCAT(tm.user_id ORDER BY tm.user_id) FROM {$teamMembers} tm WHERE tm.team_id=t.id AND tm.is_lead=1) lead_ids FROM {$teams} t ORDER BY t.name"
+            : (($manageTemplates || $manageTasks)
                 ? "SELECT t.id,t.name,t.description,t.is_active,0 member_count,NULL member_names FROM {$teams} t WHERE t.is_active=1 ORDER BY t.name"
                 : "SELECT t.id,t.name,t.description,t.is_active,0 member_count,NULL member_names FROM {$teams} t WHERE 1=0");
         $taskTypeSql = $manageTemplates
@@ -199,7 +200,7 @@ final class WorkflowRepository
         return $this->orders($filters, $userId, $manageAll);
     }
 
-    public function tasks(int $userId, bool $manageAll, array $filters = []): array
+    public function tasks(int $userId, bool $manageAll, bool $canWorkAssigned, array $filters = []): array
     {
         $tasks = Table::name('tasks');
         $assignees = Table::name('task_assignees');
@@ -208,6 +209,7 @@ final class WorkflowRepository
         $types = Table::name('task_types');
         $orderCustomers = Table::name('order_customers');
         $customers = Table::name('customers');
+        $teamMembers = Table::name('team_members');
         $where = ["(t.order_id IS NULL OR (o.id IS NOT NULL AND o.deleted_at IS NULL AND o.archived_at IS NULL))"];
         $params = [];
         $archive = (string) ($filters['archived'] ?? 'exclude');
@@ -219,6 +221,11 @@ final class WorkflowRepository
         if (!$manageAll) {
             $where[] = "EXISTS (SELECT 1 FROM {$assignees} mine WHERE mine.task_id=t.id AND mine.user_id=?)";
             $params[] = $userId;
+        }
+        if (($filters['scope'] ?? '') === 'standalone') {
+            $where[] = 't.order_id IS NULL';
+        } elseif (($filters['scope'] ?? '') === 'project') {
+            $where[] = 't.order_id IS NOT NULL';
         }
         if (($filters['status'] ?? '') !== '') {
             $where[] = 't.status=?';
@@ -234,13 +241,27 @@ final class WorkflowRepository
             $where[] = 't.order_id=?';
             $params[] = (int) $filters['order_id'];
         }
+        if ((int) ($filters['assignee_user_id'] ?? 0) > 0) {
+            $where[] = "EXISTS (SELECT 1 FROM {$assignees} filtered_user WHERE filtered_user.task_id=t.id AND filtered_user.user_id=?)";
+            $params[] = (int) $filters['assignee_user_id'];
+        }
+        if ((int) ($filters['assignee_team_id'] ?? 0) > 0) {
+            $where[] = "EXISTS (SELECT 1 FROM {$assignees} filtered_assignee JOIN {$teamMembers} filtered_member ON filtered_member.user_id=filtered_assignee.user_id WHERE filtered_assignee.task_id=t.id AND filtered_member.team_id=?)";
+            $params[] = (int) $filters['assignee_team_id'];
+        }
         if (trim((string) ($filters['customer'] ?? '')) !== '') {
             $where[] = "EXISTS (SELECT 1 FROM {$orderCustomers} oc JOIN {$customers} c ON c.id=oc.customer_id WHERE oc.order_id=t.order_id AND c.name LIKE ?)";
             $params[] = '%' . trim((string) $filters['customer']) . '%';
         }
+        if (trim((string) ($filters['search'] ?? '')) !== '') {
+            $where[] = "(t.title LIKE ? OR COALESCE(t.description,'') LIKE ? OR COALESCE(o.title,'') LIKE ? OR COALESCE(o.order_number,'') LIKE ?)";
+            $search = '%' . trim((string) $filters['search']) . '%';
+            array_push($params, $search, $search, $search, $search);
+        }
         $whereSql = implode(' AND ', $where);
         $reports = Table::name('task_reports');
-        $sql = "SELECT t.*,1 can_work,COALESCE(o.order_number,'—') order_number,COALESCE(o.title,'تسک مستقل') order_title,COALESCE(o.progress_percent,0) progress_percent,tt.name task_type_name,tt.color task_type_color,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=t.id) assignee_names,(SELECT GROUP_CONCAT(ta.user_id ORDER BY ta.user_id) FROM {$assignees} ta WHERE ta.task_id=t.id) assignee_ids,(SELECT COUNT(*) FROM {$reports} tr WHERE tr.task_id=t.id) report_count FROM {$tasks} t LEFT JOIN {$orders} o ON o.id=t.order_id JOIN {$types} tt ON tt.id=t.task_type_id WHERE {$whereSql} ORDER BY FIELD(t.status,'in_progress','open','completed'),t.created_at DESC LIMIT 300";
+        $canWork = $manageAll ? '1' : ($canWorkAssigned ? "EXISTS (SELECT 1 FROM {$assignees} worker WHERE worker.task_id=t.id AND worker.user_id=" . (int) $userId . ')' : '0');
+        $sql = "SELECT t.*,{$canWork} can_work,COALESCE(o.order_number,'—') order_number,COALESCE(o.title,'تسک مستقل') order_title,COALESCE(o.progress_percent,0) progress_percent,tt.name task_type_name,tt.color task_type_color,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=t.id) assignee_names,(SELECT GROUP_CONCAT(ta.user_id ORDER BY ta.user_id) FROM {$assignees} ta WHERE ta.task_id=t.id) assignee_ids,(SELECT COUNT(*) FROM {$reports} tr WHERE tr.task_id=t.id) report_count FROM {$tasks} t LEFT JOIN {$orders} o ON o.id=t.order_id JOIN {$types} tt ON tt.id=t.task_type_id WHERE {$whereSql} ORDER BY FIELD(t.status,'in_progress','open','completed'),t.created_at DESC LIMIT 300";
         $statement = Connection::get()->prepare($sql);
         $statement->execute($params);
         return $statement->fetchAll(PDO::FETCH_ASSOC);
@@ -278,7 +299,7 @@ final class WorkflowRepository
         }
     }
 
-    public function task(int $taskId, int $userId, bool $manageAll): ?array
+    public function task(int $taskId, int $userId, bool $manageAll, bool $canWorkAssigned): ?array
     {
         $tasks = Table::name('tasks');
         $orders = Table::name('work_orders');
@@ -288,8 +309,9 @@ final class WorkflowRepository
         $reports = Table::name('task_reports');
         $members = Table::name('project_members');
         $actorId = (int) $userId;
-        $canWork = $manageAll ? '1' : "EXISTS (SELECT 1 FROM {$assignees} mine WHERE mine.task_id=t.id AND mine.user_id={$actorId})";
-        $where = $manageAll ? '' : " AND ({$canWork} OR EXISTS (SELECT 1 FROM {$members} pm WHERE pm.project_id=o.project_id AND pm.user_id={$actorId}))";
+        $assigned = "EXISTS (SELECT 1 FROM {$assignees} mine WHERE mine.task_id=t.id AND mine.user_id={$actorId})";
+        $canWork = $manageAll ? '1' : ($canWorkAssigned ? $assigned : '0');
+        $where = $manageAll ? '' : " AND ({$assigned} OR EXISTS (SELECT 1 FROM {$members} pm WHERE pm.project_id=o.project_id AND pm.user_id={$actorId}))";
         $statement = Connection::get()->prepare("SELECT t.*,o.project_id,o.archived_at project_archived_at,{$canWork} can_work,COALESCE(o.title,'تسک مستقل') order_title,tt.name task_type_name,tt.color task_type_color FROM {$tasks} t LEFT JOIN {$orders} o ON o.id=t.order_id JOIN {$types} tt ON tt.id=t.task_type_id WHERE t.id=?{$where}");
         $statement->execute([$taskId]);
         $task = $statement->fetch(PDO::FETCH_ASSOC);
@@ -397,13 +419,13 @@ final class WorkflowRepository
         }
     }
 
-    public function order(int $orderId, int $userId = 0, bool $manageAll = true): ?array
+    public function order(int $orderId, int $userId = 0, bool $manageProjects = true, bool $manageTasks = true, bool $canWorkAssigned = true): ?array
     {
         $orders = Table::name('work_orders');
         $priorities = Table::name('order_priorities');
         $projectTable = Table::name('projects');
         $projectMembers = Table::name('project_members');
-        $access = $manageAll ? '' : " AND EXISTS (SELECT 1 FROM {$projectMembers} mine WHERE mine.project_id=o.project_id AND mine.user_id=" . (int) $userId . ')';
+        $access = $manageProjects ? '' : " AND EXISTS (SELECT 1 FROM {$projectMembers} mine WHERE mine.project_id=o.project_id AND mine.user_id=" . (int) $userId . ')';
         $statement = Connection::get()->prepare("SELECT o.*,p.name priority_name,p.color priority_color,pr.name project_name FROM {$orders} o LEFT JOIN {$priorities} p ON p.id=o.priority_id LEFT JOIN {$projectTable} pr ON pr.id=o.project_id WHERE o.id=? AND o.deleted_at IS NULL{$access} LIMIT 1");
         $statement->execute([$orderId]);
         $order = $statement->fetch(PDO::FETCH_ASSOC);
@@ -422,7 +444,7 @@ final class WorkflowRepository
         $reports = Table::name('task_reports');
         $dependencies = Table::name('order_step_dependencies');
         $assignees = Table::name('task_assignees');
-        $canWork = $manageAll ? '1' : "EXISTS (SELECT 1 FROM {$assignees} mine WHERE mine.task_id=t.id AND mine.user_id=" . (int) $userId . ')';
+        $canWork = $manageTasks ? '1' : ($canWorkAssigned ? "EXISTS (SELECT 1 FROM {$assignees} mine WHERE mine.task_id=t.id AND mine.user_id=" . (int) $userId . ')' : '0');
         $q = Connection::get()->prepare("SELECT s.*,tt.name task_type_name,t.id task_id,t.status task_status,{$canWork} task_can_work,(SELECT GROUP_CONCAT(d.depends_on_step_id ORDER BY d.depends_on_step_id) FROM {$dependencies} d WHERE d.step_id=s.id) dependency_ids,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=t.id) assignee_names FROM {$steps} s JOIN {$types} tt ON tt.id=s.task_type_id LEFT JOIN {$tasks} t ON t.order_step_id=s.id WHERE s.order_id=? ORDER BY s.position,s.id");
         $q->execute([$orderId]);
         $order['steps'] = $q->fetchAll(PDO::FETCH_ASSOC);
@@ -715,13 +737,43 @@ final class WorkflowRepository
         $table = Table::name('teams');
         $statement = Connection::get()->prepare("INSERT INTO {$table} (name,description,created_by) VALUES (?,?,?)");
         $statement->execute([$this->required($name, 'نام گروه'), $description, $actorId]);
-        return (int) Connection::get()->lastInsertId();
+        $teamId = (int) Connection::get()->lastInsertId();
+        (new AuditLogger())->record($actorId, 'team.created', 'team', (string) $teamId);
+        return $teamId;
     }
 
-    public function addTeamMember(int $teamId, int $userId, bool $lead): void
+    public function updateTeam(int $teamId, array $data, int $actorId): void
     {
-        $table = Table::name('team_members');
-        Connection::get()->prepare("INSERT INTO {$table} (team_id,user_id,is_lead) VALUES (?,?,?) ON DUPLICATE KEY UPDATE is_lead=VALUES(is_lead)")->execute([$teamId, $userId, $lead ? 1 : 0]);
+        $table = Table::name('teams');
+        $statement = Connection::get()->prepare("UPDATE {$table} SET name=?,description=?,is_active=? WHERE id=?");
+        $statement->execute([$this->required((string) ($data['name'] ?? ''), 'نام گروه'), $data['description'] ?? null, (bool) ($data['is_active'] ?? true) ? 1 : 0, $teamId]);
+        if ($statement->rowCount() < 1) {
+            $check = Connection::get()->prepare("SELECT 1 FROM {$table} WHERE id=?");
+            $check->execute([$teamId]);
+            if (!$check->fetchColumn()) throw new RuntimeException('تیم پیدا نشد.');
+        }
+        (new AuditLogger())->record($actorId, 'team.updated', 'team', (string) $teamId, ['is_active' => (bool) ($data['is_active'] ?? true)]);
+    }
+
+    public function addTeamMember(int $teamId, int $userId, bool $lead, int $actorId): void
+    {
+        $teams = Table::name('teams');
+        $members = Table::name('team_members');
+        $check = Connection::get()->prepare("SELECT 1 FROM {$teams} WHERE id=?");
+        $check->execute([$teamId]);
+        if (!$check->fetchColumn()) throw new RuntimeException('تیم پیدا نشد.');
+        $this->assertActiveUsers([$userId]);
+        Connection::get()->prepare("INSERT INTO {$members} (team_id,user_id,is_lead) VALUES (?,?,?) ON DUPLICATE KEY UPDATE is_lead=VALUES(is_lead)")->execute([$teamId, $userId, $lead ? 1 : 0]);
+        (new AuditLogger())->record($actorId, 'team.member_saved', 'team', (string) $teamId, ['user_id' => $userId, 'is_lead' => $lead]);
+    }
+
+    public function removeTeamMember(int $teamId, int $userId, int $actorId): void
+    {
+        $members = Table::name('team_members');
+        $statement = Connection::get()->prepare("DELETE FROM {$members} WHERE team_id=? AND user_id=?");
+        $statement->execute([$teamId, $userId]);
+        if ($statement->rowCount() < 1) throw new RuntimeException('این کاربر عضو تیم نیست.');
+        (new AuditLogger())->record($actorId, 'team.member_removed', 'team', (string) $teamId, ['user_id' => $userId]);
     }
 
     public function createTaskType(string $name, string $slug, string $color, ?string $description): int
@@ -975,45 +1027,6 @@ final class WorkflowRepository
         $pdo->prepare("DELETE FROM {$templates} WHERE id=?")->execute([$templateId]);
     }
 
-    public function wipeTestData(): void
-    {
-        $tables = [
-            'notifications' => Table::name('user_notifications'),
-            'history' => Table::name('workflow_activity_logs'),
-            'tasks' => Table::name('tasks'),
-            'orders' => Table::name('work_orders'),
-            'projects' => Table::name('projects'),
-            'templates' => Table::name('workflow_templates'),
-            'task_types' => Table::name('task_types'),
-            'teams' => Table::name('teams'),
-            'customers' => Table::name('customers'),
-            'attachments' => Table::name('order_attachments'),
-            'files' => Table::name('files'),
-        ];
-        $pdo = Connection::get();
-        $pdo->beginTransaction();
-        try {
-            $fileIds = array_map('intval', $pdo->query("SELECT file_id FROM {$tables['attachments']}")->fetchAll(PDO::FETCH_COLUMN));
-            $pdo->exec("DELETE FROM {$tables['notifications']}");
-            $pdo->exec("DELETE FROM {$tables['history']}");
-            $pdo->exec("DELETE FROM {$tables['tasks']}");
-            $pdo->exec("DELETE FROM {$tables['orders']}");
-            $pdo->exec("DELETE FROM {$tables['projects']}");
-            $pdo->exec("DELETE FROM {$tables['templates']}");
-            $pdo->exec("DELETE FROM {$tables['task_types']}");
-            $pdo->exec("DELETE FROM {$tables['teams']}");
-            $pdo->exec("DELETE FROM {$tables['customers']}");
-            if ($fileIds !== []) {
-                $placeholders = implode(',', array_fill(0, count($fileIds), '?'));
-                $pdo->prepare("DELETE FROM {$tables['files']} WHERE id IN ({$placeholders})")->execute($fileIds);
-            }
-            $pdo->commit();
-        } catch (\Throwable $exception) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            throw $exception;
-        }
-    }
-
     public function createCustomer(string $name, ?string $phone, ?string $email, ?string $notes): int
     {
         if ($email !== null && $email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('ایمیل مشتری معتبر نیست.');
@@ -1145,6 +1158,43 @@ final class WorkflowRepository
             if ($templateId < 1) throw new RuntimeException('مرحله قالب پیدا نشد.');
             $pdo->prepare("UPDATE {$steps} SET is_active=0 WHERE id=?")->execute([$stepId]);
             $pdo->prepare("UPDATE {$templates} SET version=version+1 WHERE id=?")->execute([$templateId]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function deleteTemplateStep(int $stepId, int $actorId): void
+    {
+        $steps = Table::name('workflow_template_steps');
+        $dependencies = Table::name('workflow_template_step_dependencies');
+        $templates = Table::name('workflow_templates');
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $query = $pdo->prepare("SELECT workflow_template_id,name FROM {$steps} WHERE id=? FOR UPDATE");
+            $query->execute([$stepId]);
+            $step = $query->fetch(PDO::FETCH_ASSOC);
+            if (!$step) throw new RuntimeException('مرحله قالب پیدا نشد.');
+
+            $query = $pdo->prepare("SELECT child.name FROM {$dependencies} d JOIN {$steps} child ON child.id=d.step_id WHERE d.depends_on_step_id=? ORDER BY child.position,child.id");
+            $query->execute([$stepId]);
+            $dependents = array_values(array_filter(array_map('strval', $query->fetchAll(PDO::FETCH_COLUMN))));
+            if ($dependents !== []) {
+                throw new RuntimeException('ابتدا وابستگی این مراحل را بردارید: ' . implode('، ', $dependents));
+            }
+
+            $templateId = (int) $step['workflow_template_id'];
+            $pdo->prepare("DELETE FROM {$steps} WHERE id=?")->execute([$stepId]);
+            $query = $pdo->prepare("SELECT id FROM {$steps} WHERE workflow_template_id=? ORDER BY position,id");
+            $query->execute([$templateId]);
+            $position = $pdo->prepare("UPDATE {$steps} SET position=? WHERE id=?");
+            foreach (array_map('intval', $query->fetchAll(PDO::FETCH_COLUMN)) as $index => $remainingId) {
+                $position->execute([($index + 1) * 10, $remainingId]);
+            }
+            $pdo->prepare("UPDATE {$templates} SET version=version+1 WHERE id=?")->execute([$templateId]);
+            (new AuditLogger())->record($actorId, 'template.step_deleted', 'workflow_template', (string) $templateId, ['step_id' => $stepId, 'name' => (string) $step['name']]);
             $pdo->commit();
         } catch (\Throwable $exception) {
             if ($pdo->inTransaction()) $pdo->rollBack();
