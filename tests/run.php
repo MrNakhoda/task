@@ -154,7 +154,7 @@ $test('completed tasks remain on the main board until explicitly archived', stat
     $stylesheet = file_get_contents(APP_ROOT . '/public/assets/app.css');
     $assert(is_string($repository) && str_contains($repository, "t.status <> 'cancelled'"));
     $assert(!str_contains($repository, "t.status NOT IN ('completed','cancelled')"), 'Completed tasks must not be hidden by the default query.');
-    $assert(is_string($view) && str_contains($view, 'همه وظایف جاری'));
+    $assert(is_string($view) && str_contains($view, 'همه وضعیت‌ها'));
     $assert(is_string($javascript) && str_contains($javascript, "['completed', 'انجام‌شده']"));
     $assert(str_contains($javascript, 'data-task-column="${status}"'), 'Task columns must expose their status for responsive styling.');
     $assert(is_string($stylesheet) && str_contains($stylesheet, 'repeat(auto-fit, minmax(260px, 1fr))'), 'Filtered boards must use the full available width.');
@@ -292,10 +292,17 @@ $test('task filters, team management and template step deletion are wired safely
     $assert(str_contains($repository, 'ابتدا وابستگی این مراحل را بردارید'));
     $assert(is_string($engine) && str_contains($engine, 'team.is_active=1'));
     $assert(str_contains($engine, 'role.is_active=1'));
-    $assert(is_string($view) && str_contains($view, 'فقط مستقل / بدون پروژه'));
+    $assert(is_string($view) && str_contains($view, 'name="scope" value="standalone"'));
     $assert(str_contains($view, 'data-save-team'));
+    $assert(str_contains($view, 'data-toggle-task-filters') && str_contains($view, 'data-task-filter-panel'), 'Advanced task filters must use a compact disclosure panel.');
+    $assert(str_contains($view, 'data-task-filter-chips') && str_contains($view, 'data-task-filter-quick'), 'Quick filters and removable active-filter chips must be visible.');
     $assert(is_string($javascript) && str_contains($javascript, 'data-delete-template-stage'));
     $assert(str_contains($javascript, 'data-remove-team-member'));
+    $assert(str_contains($javascript, 'function renderTaskFilterUi()'));
+    $assert(str_contains($javascript, 'function syncTaskProjectFilters('));
+    $stylesheet = file_get_contents(APP_ROOT . '/public/assets/app.css');
+    $assert(is_string($stylesheet) && str_contains($stylesheet, '.tf-task-filter-panel'));
+    $assert(str_contains($stylesheet, 'body.task-filters-open'), 'The mobile filter sheet must lock background scrolling.');
     $assert(is_string($migration));
     foreach (['orders.read', 'orders.manage', 'tasks.work', 'tasks.manage', 'templates.manage', 'teams.manage', 'users.manage', 'roles.manage'] as $permission) {
         $assert(str_contains($migration, "'{$permission}'"), 'Missing permission migration: ' . $permission);
