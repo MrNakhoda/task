@@ -14,6 +14,7 @@
         ['پروژه و وظایف', ['orders.read', 'orders.manage', 'tasks.work', 'tasks.manage', 'templates.manage']],
         ['سایر بخش‌ها', ['catalog.manage', 'crm.manage', 'hr.manage']],
     ];
+    const taskAdvancedFilterLabels = { task_type_id: 'نوع وظیفه', order_id: 'پروژه', customer: 'مشتری', assignee_user_id: 'مسئول', assignee_team_id: 'تیم' };
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
     const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
     const endpoint = path => new URL(`api/v1/workflow/${path.replace(/^\//, '')}`, document.baseURI).toString();
@@ -90,6 +91,89 @@
             select.innerHTML = blank + items.map(item => `<option value="${type === 'permissions' ? esc(item.key_name) : Number(item.id)}">${esc(optionTitle(type, item))}</option>`).join('');
             [...select.options].forEach(option => { option.selected = selected.includes(option.value); });
         });
+    }
+
+    function serializeTaskFilters(form) {
+        const params = new URLSearchParams();
+        new FormData(form).forEach((value, key) => {
+            const normalized = String(value).trim();
+            if (normalized !== '') params.set(key, normalized);
+        });
+        return params.toString();
+    }
+
+    function restoreTaskFilterForm() {
+        const form = root.querySelector('[data-task-filters]');
+        if (!form) return;
+        const params = new URLSearchParams(state.taskQuery);
+        form.reset();
+        ['search', 'scope', 'status', ...Object.keys(taskAdvancedFilterLabels)].forEach(name => {
+            const field = form.elements[name];
+            if (field) field.value = params.get(name) || '';
+        });
+        syncTaskProjectFilters(false);
+    }
+
+    function syncTaskProjectFilters(clearHidden = false) {
+        const form = root.querySelector('[data-task-filters]');
+        if (!form) return;
+        const standalone = form.elements.scope?.value === 'standalone';
+        form.querySelectorAll('[data-project-task-filter]').forEach(label => {
+            label.hidden = standalone;
+            if (standalone && clearHidden) label.querySelectorAll('input,select').forEach(field => { field.value = ''; });
+        });
+    }
+
+    function taskFilterValue(form, name, value) {
+        const field = form.elements[name];
+        if (field instanceof HTMLSelectElement) return field.selectedOptions[0]?.textContent?.trim() || value;
+        return value;
+    }
+
+    function renderTaskFilterUi() {
+        const form = root.querySelector('[data-task-filters]');
+        if (!form) return;
+        syncTaskProjectFilters(false);
+        const params = new URLSearchParams(state.taskQuery);
+        const active = Object.entries(taskAdvancedFilterLabels).flatMap(([name, label]) => {
+            const value = params.get(name) || '';
+            return value ? [[name, label, taskFilterValue(form, name, value)]] : [];
+        });
+        const count = form.querySelector('[data-task-filter-count]');
+        const toggle = form.querySelector('[data-toggle-task-filters]');
+        const chips = form.querySelector('[data-task-filter-chips]');
+        count.textContent = active.length.toLocaleString('fa-IR');
+        count.hidden = active.length === 0;
+        toggle.classList.toggle('has-active-filters', active.length > 0);
+        chips.hidden = active.length === 0;
+        chips.innerHTML = active.length ? `<span>فیلترهای فعال:</span>${active.map(([name, label, value]) => `<button class="tf-task-filter-chip" type="button" data-remove-task-filter="${esc(name)}"><span>${esc(label)}: ${esc(value)}</span><i aria-hidden="true">×</i></button>`).join('')}<button class="tf-task-filter-clear" type="button" data-reset-task-filters>پاک‌کردن همه</button>` : '';
+    }
+
+    function openTaskFilters() {
+        const form = root.querySelector('[data-task-filters]');
+        const panel = form?.querySelector('[data-task-filter-panel]');
+        if (!form || !panel) return;
+        panel.hidden = false;
+        form.classList.add('is-open');
+        form.querySelector('[data-task-filter-backdrop]').hidden = false;
+        form.querySelector('[data-toggle-task-filters]').setAttribute('aria-expanded', 'true');
+        document.body.classList.add('task-filters-open');
+        requestAnimationFrame(() => panel.querySelector('select,input')?.focus());
+    }
+
+    function closeTaskFilters(restore = true) {
+        const form = root.querySelector('[data-task-filters]');
+        const panel = form?.querySelector('[data-task-filter-panel]');
+        if (!form || !panel || panel.hidden) return;
+        if (restore) restoreTaskFilterForm();
+        panel.hidden = true;
+        form.classList.remove('is-open');
+        form.querySelector('[data-task-filter-backdrop]').hidden = true;
+        const toggle = form.querySelector('[data-toggle-task-filters]');
+        toggle.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('task-filters-open');
+        renderTaskFilterUi();
+        if (restore) toggle.focus();
     }
 
     function permissionKeys(role) {
@@ -241,7 +325,7 @@
         if (query !== null) state.taskQuery = query;
         const payload = await api(`tasks${state.taskQuery ? `?${state.taskQuery}` : ''}`);
         state.tasks = payload.tasks;
-        renderTasks(); renderDashboard();
+        renderTasks(); renderDashboard(); renderTaskFilterUi();
     }
 
     async function loadArchives() {
@@ -575,8 +659,30 @@
         if (editRole) { const role = state.reference.roles.find(item => Number(item.id) === Number(editRole.dataset.editRole)); if (role) prepareRole(role); return; }
         const cloneRole = event.target.closest('[data-clone-role]');
         if (cloneRole) { const role = state.reference.roles.find(item => Number(item.id) === Number(cloneRole.dataset.cloneRole)); if (role) prepareRole(role, true); return; }
+        const toggleTaskFilters = event.target.closest('[data-toggle-task-filters]');
+        if (toggleTaskFilters) {
+            const panel = toggleTaskFilters.closest('form')?.querySelector('[data-task-filter-panel]');
+            if (panel?.hidden) openTaskFilters(); else closeTaskFilters();
+            return;
+        }
+        if (event.target.closest('[data-close-task-filters]')) { closeTaskFilters(); return; }
+        const removeTaskFilter = event.target.closest('[data-remove-task-filter]');
+        if (removeTaskFilter) {
+            const params = new URLSearchParams(state.taskQuery);
+            params.delete(removeTaskFilter.dataset.removeTaskFilter);
+            state.taskQuery = params.toString();
+            restoreTaskFilterForm();
+            await loadTasks(state.taskQuery).catch(error => toast(error.message, 'error'));
+            return;
+        }
         const resetTaskFilters = event.target.closest('[data-reset-task-filters]');
-        if (resetTaskFilters) { resetTaskFilters.closest('form')?.reset(); await loadTasks(''); return; }
+        if (resetTaskFilters) {
+            resetTaskFilters.closest('form')?.reset();
+            syncTaskProjectFilters(true);
+            closeTaskFilters(false);
+            await loadTasks('').catch(error => toast(error.message, 'error'));
+            return;
+        }
 
         const editProject = event.target.closest('[data-edit-project]');
         if (editProject && state.selectedProject) {
@@ -748,19 +854,29 @@
         finally { action.disabled = false; }
     });
 
-    root.addEventListener('change', event => {
+    root.addEventListener('change', async event => {
         if (event.target.matches('[data-role-choice]')) renderEffectivePermissions(event.target.closest('form'));
+        if (event.target.matches('[data-task-filter-quick]')) {
+            const form = event.target.closest('[data-task-filters]');
+            syncTaskProjectFilters(event.target.name === 'scope');
+            try { await loadTasks(serializeTaskFilters(form)); }
+            catch (error) { toast(error.message, 'error'); }
+        }
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !root.querySelector('[data-task-filter-panel]')?.hidden) closeTaskFilters();
     });
 
     root.addEventListener('submit', async event => {
         const form = event.target;
         if (!(form instanceof HTMLFormElement)) return;
         event.preventDefault();
-        const submit = form.querySelector('[type="submit"],button:not([type])');
+        const submit = event.submitter || form.querySelector('[type="submit"],button:not([type])');
         if (submit) submit.disabled = true;
         try {
             if (form.matches('[data-project-filters]')) await loadProjects(new URLSearchParams(values(form)).toString());
-            else if (form.matches('[data-task-filters]')) await loadTasks(new URLSearchParams(values(form)).toString());
+            else if (form.matches('[data-task-filters]')) { await loadTasks(serializeTaskFilters(form)); closeTaskFilters(false); }
             else if (form.matches('[data-create-project]')) { const result = await api('projects', { method: 'POST', body: values(form) }); closeModal(form); await Promise.all([loadProjects(), loadOverview(), loadReference()]); await showProject(result.id); }
             else if (form.matches('[data-project-edit-form]')) { const data = values(form); const id = data.project_id; delete data.project_id; await api(`projects/${id}`, { method: 'POST', body: data }); closeModal(form); await Promise.all([loadProjects(), loadReference()]); await showProject(id); }
             else if (form.matches('[data-create-quick-task]')) { await api('tasks', { method: 'POST', body: values(form) }); closeModal(form); await Promise.all([loadTasks(), loadOverview(), loadNotifications()]); go('tasks'); }

@@ -17,6 +17,9 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
         <symbol id="tf-i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
         <symbol id="tf-i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5m10-2a7 7 0 0 0-12-4L4 11m1 2a7 7 0 0 0 12 4l3-4"/></symbol>
         <symbol id="tf-i-logout" viewBox="0 0 24 24"><path d="M10 5H5v14h5m4-4 4-3-4-3m4 3H9"/></symbol>
+        <symbol id="tf-i-search" viewBox="0 0 24 24"><path d="m20 20-4.4-4.4M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></symbol>
+        <symbol id="tf-i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10m-7 6h4"/></symbol>
+        <symbol id="tf-i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     </svg>
     <aside class="tf-sidebar">
         <div class="tf-product"><span>TF</span><div><strong>TaskFlow</strong><small>مدیریت کار و پروژه</small></div></div>
@@ -81,7 +84,48 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
         <section class="tf-view" data-view="tasks">
             <div class="tf-page-head"><div><span>کارهای اجرایی</span><h1>وظایف</h1><p>وظایف آماده، در حال انجام و تکمیل‌شده تا زمان آرشیو در همین برد باقی می‌مانند.</p></div><div class="tf-head-actions"><button class="tf-button secondary" type="button" data-go="archives">آرشیو وظایف</button><button class="tf-button" type="button" data-open-quick-task data-requires="tasks_manage" hidden>+ تسک مستقل</button></div></div>
             <div class="tf-context-help"><b>دو نوع تسک داریم</b><span>تسک پروژه‌ای از مرحله پروژه ساخته می‌شود؛ تسک مستقل مثل «خرید سنگ» بدون پروژه ساخته می‌شود. در تخصیص چندنفره، تأیید یک نفر کافی است.</span></div>
-            <form class="tf-filters task-filters" data-task-filters><input name="search" placeholder="جست‌وجوی عنوان یا توضیحات"><select name="scope"><option value="">پروژه‌ای و مستقل</option><option value="project">فقط پروژه‌ای</option><option value="standalone">فقط مستقل / بدون پروژه</option></select><select name="status"><option value="">همه وظایف جاری</option><option value="open">آماده شروع</option><option value="in_progress">در حال انجام</option><option value="completed">انجام‌شده</option></select><select name="task_type_id" data-options="task_types"><option value="">همه نوع وظیفه‌ها</option></select><select name="order_id" data-task-project-filter><option value="">همه پروژه‌ها</option></select><label data-requires="tasks_manage" hidden><span>مسئول</span><select name="assignee_user_id" data-options="users"><option value="">همه افراد</option></select></label><label data-requires="tasks_manage" hidden><span>تیم مسئول</span><select name="assignee_team_id" data-options="teams"><option value="">همه تیم‌ها</option></select></label><input name="customer" placeholder="نام مشتری"><div class="tf-filter-actions"><button class="tf-button secondary">اعمال فیلتر</button><button class="tf-button ghost" type="button" data-reset-task-filters>پاک‌کردن</button></div></form>
+            <form class="tf-task-filters" data-task-filters>
+                <div class="tf-task-filter-toolbar">
+                    <label class="tf-task-search">
+                        <span class="tf-sr-only">جست‌وجوی وظیفه</span>
+                        <svg aria-hidden="true"><use href="#tf-i-search"/></svg>
+                        <input name="search" type="search" placeholder="جست‌وجوی عنوان یا توضیحات" autocomplete="off">
+                        <button type="submit" aria-label="اجرای جست‌وجو"><svg aria-hidden="true"><use href="#tf-i-search"/></svg></button>
+                    </label>
+                    <fieldset class="tf-filter-segment tf-task-scope">
+                        <legend class="tf-sr-only">نوع وظیفه</legend>
+                        <label><input type="radio" name="scope" value="" data-task-filter-quick checked><span>همه</span></label>
+                        <label><input type="radio" name="scope" value="project" data-task-filter-quick><span>پروژه‌ای</span></label>
+                        <label><input type="radio" name="scope" value="standalone" data-task-filter-quick><span>مستقل</span></label>
+                    </fieldset>
+                    <button class="tf-task-filter-toggle" type="button" data-toggle-task-filters aria-controls="task-advanced-filters" aria-expanded="false">
+                        <svg aria-hidden="true"><use href="#tf-i-filter"/></svg><span>فیلترها</span><b data-task-filter-count hidden></b>
+                    </button>
+                </div>
+                <fieldset class="tf-filter-segment tf-task-status">
+                    <legend class="tf-sr-only">وضعیت وظیفه</legend>
+                    <label><input type="radio" name="status" value="" data-task-filter-quick checked><span>همه وضعیت‌ها</span></label>
+                    <label><input type="radio" name="status" value="open" data-task-filter-quick><span>آماده شروع</span></label>
+                    <label><input type="radio" name="status" value="in_progress" data-task-filter-quick><span>در حال انجام</span></label>
+                    <label><input type="radio" name="status" value="completed" data-task-filter-quick><span>انجام‌شده</span></label>
+                </fieldset>
+                <div class="tf-task-active-filters" data-task-filter-chips hidden></div>
+                <button class="tf-task-filter-backdrop" type="button" data-close-task-filters aria-label="بستن فیلترها" hidden></button>
+                <section class="tf-task-filter-panel" id="task-advanced-filters" data-task-filter-panel aria-labelledby="task-filter-panel-title" hidden>
+                    <header>
+                        <div><h2 id="task-filter-panel-title">فیلترهای تکمیلی</h2><p>برای محدودکردن دقیق‌تر فهرست وظایف</p></div>
+                        <button type="button" data-close-task-filters aria-label="بستن فیلترها"><svg aria-hidden="true"><use href="#tf-i-close"/></svg></button>
+                    </header>
+                    <div class="tf-task-filter-grid">
+                        <label><span>نوع وظیفه</span><select name="task_type_id" data-options="task_types"><option value="">همه نوع وظیفه‌ها</option></select></label>
+                        <label data-project-task-filter><span>پروژه</span><select name="order_id" data-task-project-filter><option value="">همه پروژه‌ها</option></select></label>
+                        <label data-project-task-filter><span>مشتری</span><input name="customer" placeholder="نام مشتری"></label>
+                        <label data-requires="tasks_manage" hidden><span>مسئول</span><select name="assignee_user_id" data-options="users"><option value="">همه افراد</option></select></label>
+                        <label data-requires="tasks_manage" hidden><span>تیم مسئول</span><select name="assignee_team_id" data-options="teams"><option value="">همه تیم‌ها</option></select></label>
+                    </div>
+                    <footer><button class="tf-button ghost" type="button" data-reset-task-filters>پاک‌کردن همه</button><button class="tf-button" type="submit">اعمال فیلترها</button></footer>
+                </section>
+            </form>
             <div class="tf-task-columns" data-task-board></div>
         </section>
 
