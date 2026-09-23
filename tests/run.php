@@ -296,7 +296,10 @@ $test('task filters, team management and template step deletion are wired safely
     $assert(str_contains($view, 'data-save-team'));
     $assert(is_string($javascript) && str_contains($javascript, 'data-delete-template-stage'));
     $assert(str_contains($javascript, 'data-remove-team-member'));
-    $assert(is_string($migration) && str_contains($migration, "p.key_name IN ('orders.read','orders.manage','tasks.work'"));
+    $assert(is_string($migration));
+    foreach (['orders.read', 'orders.manage', 'tasks.work', 'tasks.manage', 'templates.manage', 'teams.manage', 'users.manage', 'roles.manage'] as $permission) {
+        $assert(str_contains($migration, "'{$permission}'"), 'Missing permission migration: ' . $permission);
+    }
     $assert(str_contains($migration, "r.key_name = 'user'"));
 });
 
