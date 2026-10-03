@@ -127,10 +127,7 @@ $test('archive, member access, user and role safeguards are wired end to end', s
         $assert(is_string($module) && str_contains($module, $route), 'Missing protected update route: ' . $route);
     }
     $assert(str_contains($module, "\$permission('roles.manage')"));
-    $assert(
-        str_contains($module, '$mayWorkTasks, $mayReadProjects, $isSystemAdmin'),
-        'The workflow reference endpoint must capture the system-admin capability callback.'
-    );
+    $assert(str_contains($module, '$mayWorkTasks, $mayCreateStandaloneTasks, $mayAssignStandaloneTasks, $mayReadProjects, $isSystemAdmin'), 'The workflow reference endpoint must capture task creation and system-admin capability callbacks.');
     $assert(is_string($repository) && str_contains($repository, 'assertFullAdministratorRemains'));
     $assert(str_contains($repository, 'EXISTS (SELECT 1 FROM {$projectMembers} mine'));
     $assert(str_contains($repository, 'task_can_work'));
@@ -341,6 +338,35 @@ $test('workflow template browser stays usable and efficient at scale', static fu
     $assert(str_contains($javascript, "replace(/[\\u064A\\u0649]/g, 'ی')"), 'Persian and Arabic Yeh variants must search consistently.');
     $assert(is_string($stylesheet) && str_contains($stylesheet, '.tf-template-results { min-height: 150px; overflow-y: auto;'));
     $assert(str_contains($stylesheet, '.tf-template-list { position: sticky;'), 'Desktop template navigation must remain visible while editing.');
+});
+
+$test('standalone task creation permissions are separated and enforced end to end', static function () use ($assert): void {
+    $migration = file_get_contents(APP_ROOT . '/database/modules/workflow/006_standalone_task_creation_permissions.sql');
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $guide = file_get_contents(APP_ROOT . '/docs/USER_GUIDE_FA.md');
+    $assert(is_string($migration));
+    foreach (['tasks.create.self', 'tasks.create.assign', 'tasks.manage'] as $permission) {
+        $assert(str_contains($migration, "'{$permission}'"), 'Missing standalone task permission migration: ' . $permission);
+    }
+    $assert(str_contains($migration, 'INSERT IGNORE INTO {{prefix}}role_permissions'), 'Existing task managers must receive the new permissions without replacing role assignments.');
+    $assert(is_string($module) && str_contains($module, "\$standaloneCreatePermission = \$anyPermission(['tasks.manage', 'tasks.create.self', 'tasks.create.assign'])"));
+    $assert(str_contains($module, "post('/api/v1/workflow/tasks/{id}/cancel'"), 'Standalone task cancellation needs a protected route.');
+    $assert(str_contains($module, 'tasks_create_self') && str_contains($module, 'tasks_create_assign'), 'The UI must receive both effective capabilities.');
+    $assert(is_string($repository) && str_contains($repository, "\$assigneeIds = \$assignmentMode === 'others' ? \$requestedIds : [\$actorId]"), 'Self creation must ignore forged assignee IDs.');
+    $assert(str_contains($repository, "if (\$assignmentMode === 'others' && !\$canAssignOthers)"), 'Assigning another user must be rejected server-side without permission.');
+    $assert(str_contains($repository, 'public function cancelStandaloneTask'));
+    $assert(str_contains($repository, "status='open' AND started_at IS NULL AND created_by=?"), 'Creators may only edit their own unstarted task.');
+    $assert(str_contains($repository, 't.is_standalone=1 AND t.created_by=?'), 'Delegators must retain read access to tasks they created.');
+    $assert(is_string($view) && substr_count($view, 'data-requires="tasks_create_self"') === 2);
+    $assert(str_contains($view, 'name="assignment_mode" value="self" checked'));
+    $assert(str_contains($view, 'name="assignment_mode" value="others"'));
+    $assert(is_string($javascript) && str_contains($javascript, 'function syncStandaloneAssignmentForm(form)'));
+    $assert(str_contains($javascript, 'data-cancel-task') && str_contains($javascript, '/cancel`'));
+    $assert(str_contains($javascript, 'واگذارشده توسط من'));
+    $assert(is_string($guide) && str_contains($guide, '`tasks.create.self`') && str_contains($guide, '`tasks.create.assign`'));
 });
 
 $test('dangerous test-data wipe is absent from production workspace', static function () use ($assert): void {

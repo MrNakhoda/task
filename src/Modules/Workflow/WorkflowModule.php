@@ -82,10 +82,17 @@ final class WorkflowModule implements Module
         $mayWorkTasks = static function (int $userId) use ($allows): bool {
             return $allows($userId, 'tasks.manage') || $allows($userId, 'tasks.work');
         };
+        $mayCreateStandaloneTasks = static function (int $userId) use ($allows): bool {
+            return $allows($userId, 'tasks.manage') || $allows($userId, 'tasks.create.self') || $allows($userId, 'tasks.create.assign');
+        };
+        $mayAssignStandaloneTasks = static function (int $userId) use ($allows): bool {
+            return $allows($userId, 'tasks.manage') || $allows($userId, 'tasks.create.assign');
+        };
         $mayReadProjects = static function (int $userId) use ($allows): bool {
             return $allows($userId, 'orders.manage') || $allows($userId, 'orders.read');
         };
         $taskWorkPermission = $anyPermission(['tasks.manage', 'tasks.work']);
+        $standaloneCreatePermission = $anyPermission(['tasks.manage', 'tasks.create.self', 'tasks.create.assign']);
         $projectReadPermission = $anyPermission(['orders.manage', 'orders.read']);
         $isSystemAdmin = static function (int $userId) use ($authorization): bool {
             return $authorization->allows($userId, 'system.admin');
@@ -97,14 +104,16 @@ final class WorkflowModule implements Module
                 : Response::json(['ok' => false, 'error' => 'این عملیات فقط برای ادمین اصلی مجاز است.'], 403);
         };
 
-        $router->get('/api/v1/workflow/overview', $endpoint(static fn () => ['overview' => $repository->overview($actor(), $mayManageProjects($actor()), $mayManageTasks($actor()), $mayReadProjects($actor()))]), [$authenticated]);
-        $router->get('/api/v1/workflow/reference', $endpoint(static function () use ($repository, $actor, $allows, $mayManageProjects, $mayManageTasks, $mayWorkTasks, $mayReadProjects, $isSystemAdmin): array {
+        $router->get('/api/v1/workflow/overview', $endpoint(static fn () => ['overview' => $repository->overview($actor(), $mayManageProjects($actor()), $mayManageTasks($actor()), $mayReadProjects($actor()), $mayAssignStandaloneTasks($actor()))]), [$authenticated]);
+        $router->get('/api/v1/workflow/reference', $endpoint(static function () use ($repository, $actor, $allows, $mayManageProjects, $mayManageTasks, $mayWorkTasks, $mayCreateStandaloneTasks, $mayAssignStandaloneTasks, $mayReadProjects, $isSystemAdmin): array {
             $userId = $actor();
             $usersManage = $allows($userId, 'users.manage');
             $rolesManage = $allows($userId, 'roles.manage');
             $projectsManage = $mayManageProjects($userId);
             $tasksManage = $mayManageTasks($userId);
             $tasksWork = $mayWorkTasks($userId);
+            $tasksCreateSelf = $mayCreateStandaloneTasks($userId);
+            $tasksCreateAssign = $mayAssignStandaloneTasks($userId);
             $ordersRead = $mayReadProjects($userId);
             $templatesManage = $allows($userId, 'templates.manage');
             $teamsManage = $allows($userId, 'teams.manage');
@@ -113,6 +122,8 @@ final class WorkflowModule implements Module
                 'projects_manage' => $projectsManage,
                 'tasks_manage' => $tasksManage,
                 'tasks_work' => $tasksWork,
+                'tasks_create_self' => $tasksCreateSelf,
+                'tasks_create_assign' => $tasksCreateAssign,
                 'orders_read' => $ordersRead,
                 'templates_manage' => $templatesManage,
                 'teams_manage' => $teamsManage,
@@ -157,7 +168,7 @@ final class WorkflowModule implements Module
             if ($project === null) throw new RuntimeException('پروژه پیدا نشد.');
             return ['project' => $project];
         }), [$authenticated, $projectReadPermission]);
-        $router->get('/api/v1/workflow/tasks', $endpoint(static fn (Request $request) => ['tasks' => $repository->tasks($actor(), $mayManageTasks($actor()), $mayWorkTasks($actor()), [
+        $router->get('/api/v1/workflow/tasks', $endpoint(static fn (Request $request) => ['tasks' => $repository->tasks($actor(), $mayManageTasks($actor()), $mayWorkTasks($actor()), $mayAssignStandaloneTasks($actor()), [
             'status' => $request->query('status', ''),
             'scope' => $request->query('scope', ''),
             'task_type_id' => $request->query('task_type_id', ''),
@@ -168,9 +179,9 @@ final class WorkflowModule implements Module
             'search' => $request->query('search', ''),
             'archived' => $request->query('archived', 'exclude'),
         ])]), [$authenticated]);
-        $router->get('/api/v1/workflow/tasks/{id}', $endpoint(static function (Request $request, array $params) use ($repository, $actor, $mayManageTasks, $mayWorkTasks): array {
+        $router->get('/api/v1/workflow/tasks/{id}', $endpoint(static function (Request $request, array $params) use ($repository, $actor, $mayManageTasks, $mayWorkTasks, $mayCreateStandaloneTasks, $mayAssignStandaloneTasks): array {
             $userId = $actor();
-            $task = $repository->task((int) ($params['id'] ?? 0), $userId, $mayManageTasks($userId), $mayWorkTasks($userId));
+            $task = $repository->task((int) ($params['id'] ?? 0), $userId, $mayManageTasks($userId), $mayWorkTasks($userId), $mayAssignStandaloneTasks($userId), $mayCreateStandaloneTasks($userId));
             if ($task === null) throw new RuntimeException('تسک پیدا نشد یا به آن دسترسی ندارید.');
             return ['task' => $task];
         }), [$authenticated]);
@@ -218,11 +229,17 @@ final class WorkflowModule implements Module
         }), [$authenticated, $csrf, $permission('orders.manage')]);
         $router->post('/api/v1/workflow/projects/{id}/stages', $endpoint(static fn (Request $request, array $params) => ['id' => $engine->addOrderStep((int) ($params['id'] ?? 0), $actor(), $request->all())], 201), [$authenticated, $csrf, $permission('orders.manage')]);
 
-        $router->post('/api/v1/workflow/tasks', $endpoint(static fn (Request $request) => ['id' => $repository->createStandaloneTask($request->all(), $actor())], 201), [$authenticated, $csrf, $permission('tasks.manage')]);
-        $router->post('/api/v1/workflow/tasks/{id}', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
-            $repository->updateStandaloneTask((int) ($params['id'] ?? 0), $request->all(), $actor());
+        $router->post('/api/v1/workflow/tasks', $endpoint(static fn (Request $request) => ['id' => $repository->createStandaloneTask($request->all(), $actor(), $mayAssignStandaloneTasks($actor()))], 201), [$authenticated, $csrf, $standaloneCreatePermission]);
+        $router->post('/api/v1/workflow/tasks/{id}', $endpoint(static function (Request $request, array $params) use ($repository, $actor, $mayManageTasks, $mayCreateStandaloneTasks): array {
+            $userId = $actor();
+            $repository->updateStandaloneTask((int) ($params['id'] ?? 0), $request->all(), $userId, $mayManageTasks($userId), $mayCreateStandaloneTasks($userId));
             return [];
-        }), [$authenticated, $csrf, $permission('tasks.manage')]);
+        }), [$authenticated, $csrf, $standaloneCreatePermission]);
+        $router->post('/api/v1/workflow/tasks/{id}/cancel', $endpoint(static function (Request $request, array $params) use ($repository, $actor, $mayManageTasks, $mayCreateStandaloneTasks): array {
+            $userId = $actor();
+            $repository->cancelStandaloneTask((int) ($params['id'] ?? 0), $userId, $mayManageTasks($userId), $mayCreateStandaloneTasks($userId));
+            return [];
+        }), [$authenticated, $csrf, $standaloneCreatePermission]);
         $router->post('/api/v1/workflow/tasks/{id}/delete', $endpoint(static function (Request $request, array $params) use ($repository): array {
             $repository->deleteStandaloneTask((int) ($params['id'] ?? 0));
             return [];

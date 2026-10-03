@@ -21,14 +21,14 @@ final class WorkflowRepository
     {
     }
 
-    public function overview(int $userId, bool $manageProjects, bool $manageTasks, bool $readProjects = true): array
+    public function overview(int $userId, bool $manageProjects, bool $manageTasks, bool $readProjects = true, bool $viewCreatedStandalone = false): array
     {
         $orders = Table::name('work_orders');
         $projectMembers = Table::name('project_members');
         $tasks = Table::name('tasks');
         $assignees = Table::name('task_assignees');
         $notifications = Table::name('user_notifications');
-        $taskWhere = $manageTasks ? '' : " AND EXISTS (SELECT 1 FROM {$assignees} ta WHERE ta.task_id=t.id AND ta.user_id=" . (int) $userId . ')';
+        $taskWhere = $manageTasks ? '' : " AND (EXISTS (SELECT 1 FROM {$assignees} ta WHERE ta.task_id=t.id AND ta.user_id=" . (int) $userId . ')' . ($viewCreatedStandalone ? ' OR (t.is_standalone=1 AND t.created_by=' . (int) $userId . ')' : '') . ')';
         $orderWhere = !$readProjects ? ' AND 1=0' : ($manageProjects ? '' : " AND EXISTS (SELECT 1 FROM {$projectMembers} pm WHERE pm.project_id=o.project_id AND pm.user_id=" . (int) $userId . ')');
         $pdo = Connection::get();
 
@@ -62,10 +62,11 @@ final class WorkflowRepository
         $manageRoles = (bool) ($access['roles_manage'] ?? false);
         $manageProjects = (bool) ($access['projects_manage'] ?? false);
         $manageTasks = (bool) ($access['tasks_manage'] ?? false);
+        $createAssignedTasks = (bool) ($access['tasks_create_assign'] ?? false);
         $manageTemplates = (bool) ($access['templates_manage'] ?? false);
         $manageTeams = (bool) ($access['teams_manage'] ?? false);
         $readProjects = (bool) ($access['orders_read'] ?? false);
-        $canAssignPeople = $manageProjects || $manageTasks || $manageTemplates || $manageTeams;
+        $canAssignPeople = $manageProjects || $manageTasks || $manageTemplates || $manageTeams || $createAssignedTasks;
         $fullPeopleDetails = $manageUsers || $manageRoles;
         $projectScope = !$readProjects ? ' AND 1=0' : ($manageProjects ? '' : ' AND EXISTS (SELECT 1 FROM ' . $projectMembers . ' pm WHERE pm.project_id=o.project_id AND pm.user_id=' . (int) $userId . ')');
         $userSql = $fullPeopleDetails
@@ -238,7 +239,7 @@ final class WorkflowRepository
         return $this->orders($filters, $userId, $manageAll);
     }
 
-    public function tasks(int $userId, bool $manageAll, bool $canWorkAssigned, array $filters = []): array
+    public function tasks(int $userId, bool $manageAll, bool $canWorkAssigned, bool $viewCreatedStandalone = false, array $filters = []): array
     {
         $tasks = Table::name('tasks');
         $assignees = Table::name('task_assignees');
@@ -257,8 +258,13 @@ final class WorkflowRepository
             $where[] = 't.archived_at IS NULL';
         }
         if (!$manageAll) {
-            $where[] = "EXISTS (SELECT 1 FROM {$assignees} mine WHERE mine.task_id=t.id AND mine.user_id=?)";
+            $visibility = "EXISTS (SELECT 1 FROM {$assignees} mine WHERE mine.task_id=t.id AND mine.user_id=?)";
             $params[] = $userId;
+            if ($viewCreatedStandalone) {
+                $visibility = "({$visibility} OR (t.is_standalone=1 AND t.created_by=?))";
+                $params[] = $userId;
+            }
+            $where[] = $visibility;
         }
         if (($filters['scope'] ?? '') === 'standalone') {
             $where[] = 't.order_id IS NULL';
@@ -299,15 +305,20 @@ final class WorkflowRepository
         $whereSql = implode(' AND ', $where);
         $reports = Table::name('task_reports');
         $canWork = $manageAll ? '1' : ($canWorkAssigned ? "EXISTS (SELECT 1 FROM {$assignees} worker WHERE worker.task_id=t.id AND worker.user_id=" . (int) $userId . ')' : '0');
-        $sql = "SELECT t.*,{$canWork} can_work,COALESCE(o.order_number,'—') order_number,COALESCE(o.title,'تسک مستقل') order_title,COALESCE(o.progress_percent,0) progress_percent,tt.name task_type_name,tt.color task_type_color,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=t.id) assignee_names,(SELECT GROUP_CONCAT(ta.user_id ORDER BY ta.user_id) FROM {$assignees} ta WHERE ta.task_id=t.id) assignee_ids,(SELECT COUNT(*) FROM {$reports} tr WHERE tr.task_id=t.id) report_count FROM {$tasks} t LEFT JOIN {$orders} o ON o.id=t.order_id JOIN {$types} tt ON tt.id=t.task_type_id WHERE {$whereSql} ORDER BY FIELD(t.status,'in_progress','open','completed'),t.created_at DESC LIMIT 300";
+        $createdByMe = "(t.is_standalone=1 AND t.created_by=" . (int) $userId . ')';
+        $sql = "SELECT t.*,{$canWork} can_work,{$createdByMe} created_by_me,COALESCE(o.order_number,'—') order_number,COALESCE(o.title,'تسک مستقل') order_title,COALESCE(o.progress_percent,0) progress_percent,tt.name task_type_name,tt.color task_type_color,(SELECT GROUP_CONCAT(u.name ORDER BY u.name SEPARATOR '، ') FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=t.id) assignee_names,(SELECT GROUP_CONCAT(ta.user_id ORDER BY ta.user_id) FROM {$assignees} ta WHERE ta.task_id=t.id) assignee_ids,(SELECT COUNT(*) FROM {$reports} tr WHERE tr.task_id=t.id) report_count FROM {$tasks} t LEFT JOIN {$orders} o ON o.id=t.order_id JOIN {$types} tt ON tt.id=t.task_type_id WHERE {$whereSql} ORDER BY FIELD(t.status,'in_progress','open','completed'),t.created_at DESC LIMIT 300";
         $statement = Connection::get()->prepare($sql);
         $statement->execute($params);
         return $statement->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function createStandaloneTask(array $data, int $actorId): int
+    public function createStandaloneTask(array $data, int $actorId, bool $canAssignOthers = false): int
     {
-        $assigneeIds = $this->ids($data['user_ids'] ?? []);
+        $requestedIds = $this->ids($data['user_ids'] ?? []);
+        $assignmentMode = (string) ($data['assignment_mode'] ?? ($requestedIds === [] ? 'self' : 'others'));
+        if (!in_array($assignmentMode, ['self', 'others'], true)) throw new RuntimeException('نوع تخصیص تسک معتبر نیست.');
+        if ($assignmentMode === 'others' && !$canAssignOthers) throw new RuntimeException('اجازه تخصیص تسک مستقل به دیگران را ندارید.');
+        $assigneeIds = $assignmentMode === 'others' ? $requestedIds : [$actorId];
         if ($assigneeIds === []) throw new RuntimeException('حداقل یک مسئول برای تسک انتخاب کنید.');
         $this->assertActiveUsers($assigneeIds);
         $tasks = Table::name('tasks');
@@ -326,9 +337,12 @@ final class WorkflowRepository
             $assign = $pdo->prepare("INSERT INTO {$assignees} (task_id,user_id,assigned_by) VALUES (?,?,?)");
             foreach ($assigneeIds as $userId) {
                 $assign->execute([$taskId, $userId, $actorId]);
-                $this->notificationService->user($userId, 'task.assigned', 'تسک جدید برای شما', (string) $data['title'], '/workspace?task=' . $taskId . '#tasks');
+                if ($userId !== $actorId) {
+                    $this->notificationService->user($userId, 'task.assigned', 'تسک جدید برای شما', (string) $data['title'], '/workspace?task=' . $taskId . '#tasks');
+                }
             }
-            $this->history(null, $taskId, $actorId, 'task.created', 'تسک مستقل ایجاد و تخصیص داده شد.', ['user_ids' => $assigneeIds]);
+            $message = $assignmentMode === 'others' ? 'تسک مستقل ایجاد و به کاربران انتخاب‌شده واگذار شد.' : 'تسک مستقل برای خود کاربر ایجاد شد.';
+            $this->history(null, $taskId, $actorId, 'task.created', $message, ['assignment_mode' => $assignmentMode, 'user_ids' => $assigneeIds]);
             $pdo->commit();
             return $taskId;
         } catch (\Throwable $exception) {
@@ -337,7 +351,7 @@ final class WorkflowRepository
         }
     }
 
-    public function task(int $taskId, int $userId, bool $manageAll, bool $canWorkAssigned): ?array
+    public function task(int $taskId, int $userId, bool $manageAll, bool $canWorkAssigned, bool $viewCreatedStandalone = false, bool $editCreatedStandalone = false): ?array
     {
         $tasks = Table::name('tasks');
         $orders = Table::name('work_orders');
@@ -348,46 +362,89 @@ final class WorkflowRepository
         $members = Table::name('project_members');
         $actorId = (int) $userId;
         $assigned = "EXISTS (SELECT 1 FROM {$assignees} mine WHERE mine.task_id=t.id AND mine.user_id={$actorId})";
+        $createdStandalone = "(t.is_standalone=1 AND t.created_by={$actorId})";
         $canWork = $manageAll ? '1' : ($canWorkAssigned ? $assigned : '0');
-        $where = $manageAll ? '' : " AND ({$assigned} OR EXISTS (SELECT 1 FROM {$members} pm WHERE pm.project_id=o.project_id AND pm.user_id={$actorId}))";
+        $where = $manageAll ? '' : " AND ({$assigned} OR EXISTS (SELECT 1 FROM {$members} pm WHERE pm.project_id=o.project_id AND pm.user_id={$actorId})" . ($viewCreatedStandalone ? " OR {$createdStandalone}" : '') . ')';
         $statement = Connection::get()->prepare("SELECT t.*,o.project_id,o.archived_at project_archived_at,{$canWork} can_work,COALESCE(o.title,'تسک مستقل') order_title,tt.name task_type_name,tt.color task_type_color FROM {$tasks} t LEFT JOIN {$orders} o ON o.id=t.order_id JOIN {$types} tt ON tt.id=t.task_type_id WHERE t.id=?{$where}");
         $statement->execute([$taskId]);
         $task = $statement->fetch(PDO::FETCH_ASSOC);
         if (!$task) return null;
+        $ownEditable = $editCreatedStandalone && (int) $task['is_standalone'] === 1 && (int) ($task['created_by'] ?? 0) === $actorId && (string) $task['status'] === 'open' && $task['started_at'] === null && $task['archived_at'] === null;
+        $managerEditable = $manageAll && (int) $task['is_standalone'] === 1 && !in_array((string) $task['status'], ['completed', 'cancelled'], true) && $task['archived_at'] === null;
+        $task['created_by_me'] = (int) ((int) ($task['created_by'] ?? 0) === $actorId);
+        $task['can_edit'] = (int) ($managerEditable || $ownEditable);
+        $task['can_cancel'] = (int) (!$manageAll && $ownEditable);
         $statement = Connection::get()->prepare("SELECT u.id,u.name,u.email FROM {$assignees} ta JOIN {$users} u ON u.id=ta.user_id WHERE ta.task_id=? ORDER BY u.name");
         $statement->execute([$taskId]);
         $task['assignees'] = $statement->fetchAll(PDO::FETCH_ASSOC);
         $statement = Connection::get()->prepare("SELECT tr.*,u.name user_name FROM {$reports} tr JOIN {$users} u ON u.id=tr.user_id WHERE tr.task_id=? ORDER BY tr.created_at DESC,tr.id DESC");
         $statement->execute([$taskId]);
         $task['reports'] = $statement->fetchAll(PDO::FETCH_ASSOC);
-        if ((int) ($task['project_id'] ?? 0) > 0) {
+        if (!$manageAll) {
+            $task['eligible_assignees'] = [];
+        } elseif ((int) ($task['project_id'] ?? 0) > 0) {
             $statement = Connection::get()->prepare("SELECT u.id,u.name,u.email FROM {$members} pm JOIN {$users} u ON u.id=pm.user_id WHERE pm.project_id=? AND u.status='active' AND u.deleted_at IS NULL ORDER BY u.name");
             $statement->execute([(int) $task['project_id']]);
+            $task['eligible_assignees'] = $statement->fetchAll(PDO::FETCH_ASSOC);
         } else {
             $statement = Connection::get()->prepare("SELECT id,name,email FROM {$users} WHERE status='active' AND deleted_at IS NULL ORDER BY name");
             $statement->execute();
+            $task['eligible_assignees'] = $statement->fetchAll(PDO::FETCH_ASSOC);
         }
-        $task['eligible_assignees'] = $statement->fetchAll(PDO::FETCH_ASSOC);
         return $task;
     }
 
-    public function updateStandaloneTask(int $taskId, array $data, int $actorId): void
+    public function updateStandaloneTask(int $taskId, array $data, int $actorId, bool $manageAll = false, bool $canEditCreatedStandalone = false): void
     {
+        if (!$manageAll && !$canEditCreatedStandalone) throw new RuntimeException('اجازه ویرایش این تسک مستقل را ندارید.');
         $tasks = Table::name('tasks');
-        $statement = Connection::get()->prepare("UPDATE {$tasks} SET task_type_id=?,title=?,description=?,due_at=? WHERE id=? AND is_standalone=1 AND status NOT IN ('completed','cancelled')");
-        $statement->execute([
+        $scope = $manageAll ? "status NOT IN ('completed','cancelled')" : "status='open' AND started_at IS NULL AND created_by=?";
+        $params = [
             (int) ($data['task_type_id'] ?? 0),
             $this->required((string) ($data['title'] ?? ''), 'عنوان تسک'),
             $data['description'] ?? null,
             ($data['due_at'] ?? '') !== '' ? $data['due_at'] : null,
             $taskId,
-        ]);
+        ];
+        if (!$manageAll) $params[] = $actorId;
+        $statement = Connection::get()->prepare("UPDATE {$tasks} SET task_type_id=?,title=?,description=?,due_at=? WHERE id=? AND is_standalone=1 AND archived_at IS NULL AND {$scope}");
+        $statement->execute($params);
         if ($statement->rowCount() < 1) {
-            $check = Connection::get()->prepare("SELECT 1 FROM {$tasks} WHERE id=? AND is_standalone=1 AND status NOT IN ('completed','cancelled')");
-            $check->execute([$taskId]);
+            $checkParams = [$taskId];
+            if (!$manageAll) $checkParams[] = $actorId;
+            $check = Connection::get()->prepare("SELECT 1 FROM {$tasks} WHERE id=? AND is_standalone=1 AND archived_at IS NULL AND {$scope}");
+            $check->execute($checkParams);
             if (!$check->fetchColumn()) throw new RuntimeException('تسک مستقل پیدا نشد یا دیگر قابل ویرایش نیست.');
         }
         $this->history(null, $taskId, $actorId, 'task.updated', 'مشخصات تسک مستقل ویرایش شد.');
+    }
+
+    public function cancelStandaloneTask(int $taskId, int $actorId, bool $manageAll = false, bool $canCancelCreatedStandalone = false): void
+    {
+        if (!$manageAll && !$canCancelCreatedStandalone) throw new RuntimeException('اجازه لغو این تسک مستقل را ندارید.');
+        $tasks = Table::name('tasks');
+        $assignees = Table::name('task_assignees');
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $statement = $pdo->prepare("SELECT id,title,created_by,is_standalone,status,started_at,archived_at FROM {$tasks} WHERE id=? FOR UPDATE");
+            $statement->execute([$taskId]);
+            $task = $statement->fetch(PDO::FETCH_ASSOC);
+            if (!$task || (int) $task['is_standalone'] !== 1) throw new RuntimeException('تسک مستقل پیدا نشد.');
+            if ((string) $task['status'] !== 'open' || $task['started_at'] !== null || $task['archived_at'] !== null) throw new RuntimeException('فقط تسک مستقل شروع‌نشده قابل لغو است.');
+            if (!$manageAll && (int) ($task['created_by'] ?? 0) !== $actorId) throw new RuntimeException('فقط سازنده می‌تواند این تسک را لغو کند.');
+            $pdo->prepare("UPDATE {$tasks} SET status='cancelled' WHERE id=?")->execute([$taskId]);
+            $assigneeQuery = $pdo->prepare("SELECT user_id FROM {$assignees} WHERE task_id=? AND user_id<>?");
+            $assigneeQuery->execute([$taskId, $actorId]);
+            foreach ($assigneeQuery->fetchAll(PDO::FETCH_COLUMN) as $userId) {
+                $this->notificationService->user((int) $userId, 'task.cancelled', 'تسک لغو شد', (string) $task['title'], '/workspace#tasks');
+            }
+            $this->history(null, $taskId, $actorId, 'task.cancelled', 'تسک مستقل پیش از شروع لغو شد.');
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
     }
 
     public function deleteStandaloneTask(int $taskId): void

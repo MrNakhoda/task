@@ -7,11 +7,11 @@
     const state = { reference: {}, capabilities: {}, projects: [], tasks: [], archivedProjects: [], archivedTasks: [], templates: [], notifications: [], selectedTemplate: null, selectedProject: null, selectedTask: null, taskQuery: '', templateQuery: '', templateStatus: '', templateSort: 'name', templateDetailRequest: 0 };
     const labels = { draft: 'پیش‌نویس', active: 'فعال', completed: 'تکمیل‌شده', open: 'آماده شروع', in_progress: 'در حال انجام', pending: 'منتظر پیش‌نیاز', disabled: 'غیرفعال', cancelled: 'لغوشده' };
     const viewTitles = { dashboard: 'نمای کلی', projects: 'پروژه‌ها', 'project-detail': 'جزئیات پروژه', tasks: 'وظایف', archives: 'آرشیوها', workflows: 'قالب‌های گردش‌کار', 'task-types': 'انواع وظیفه', customers: 'مشتری‌ها', teams: 'تیم‌ها', users: 'کاربران و نقش‌ها', guide: 'راهنمای سیستم', notifications: 'اعلان‌ها' };
-    const permissionLabels = { 'system.admin': 'مدیریت کامل سیستم', 'users.manage': 'مدیریت کاربران', 'roles.manage': 'مدیریت نقش‌ها و دسترسی‌ها', 'templates.manage': 'مدیریت قالب و نوع وظیفه', 'orders.manage': 'مدیریت همه پروژه‌ها', 'tasks.manage': 'مدیریت همه تسک‌ها', 'tasks.work': 'انجام تسک‌های تخصیص‌یافته', 'teams.manage': 'مدیریت تیم‌ها', 'orders.read': 'مشاهده پروژه‌های عضو', 'catalog.manage': 'مدیریت کاتالوگ', 'crm.manage': 'مدیریت مشتری‌ها', 'hr.manage': 'مدیریت منابع انسانی', 'workflow.admin': 'مدیریت کامل گردش‌کار' };
+    const permissionLabels = { 'system.admin': 'مدیریت کامل سیستم', 'users.manage': 'مدیریت کاربران', 'roles.manage': 'مدیریت نقش‌ها و دسترسی‌ها', 'templates.manage': 'مدیریت قالب و نوع وظیفه', 'orders.manage': 'مدیریت همه پروژه‌ها', 'tasks.manage': 'مدیریت همه تسک‌ها', 'tasks.work': 'انجام تسک‌های تخصیص‌یافته', 'tasks.create.self': 'ساخت تسک مستقل برای خود', 'tasks.create.assign': 'ساخت و واگذاری تسک مستقل', 'teams.manage': 'مدیریت تیم‌ها', 'orders.read': 'مشاهده پروژه‌های عضو', 'catalog.manage': 'مدیریت کاتالوگ', 'crm.manage': 'مدیریت مشتری‌ها', 'hr.manage': 'مدیریت منابع انسانی', 'workflow.admin': 'مدیریت کامل گردش‌کار' };
     const permissionGroups = [
         ['مدیریت سامانه', ['system.admin', 'workflow.admin']],
         ['افراد و ساختار', ['users.manage', 'roles.manage', 'teams.manage']],
-        ['پروژه و وظایف', ['orders.read', 'orders.manage', 'tasks.work', 'tasks.manage', 'templates.manage']],
+        ['پروژه و وظایف', ['orders.read', 'orders.manage', 'tasks.work', 'tasks.create.self', 'tasks.create.assign', 'tasks.manage', 'templates.manage']],
         ['سایر بخش‌ها', ['catalog.manage', 'crm.manage', 'hr.manage']],
     ];
     const taskAdvancedFilterLabels = { task_type_id: 'نوع وظیفه', order_id: 'پروژه', customer: 'مشتری', assignee_user_id: 'مسئول', assignee_team_id: 'تیم' };
@@ -275,6 +275,28 @@
         [...form.querySelectorAll('input[type="hidden"]')].forEach(input => { input.value = ''; });
     }
 
+    function syncStandaloneAssignmentForm(form) {
+        if (!form) return;
+        const canAssignOthers = Boolean(state.capabilities.tasks_create_assign);
+        const mode = canAssignOthers && form.elements.assignment_mode?.value === 'others' ? 'others' : 'self';
+        const options = form.querySelector('[data-standalone-assignment-options]');
+        const selfSummary = form.querySelector('[data-standalone-self-assignment]');
+        const assigneeField = form.querySelector('[data-standalone-assignees]');
+        const assigneeSelect = form.elements.user_ids;
+        if (options) options.hidden = !canAssignOthers;
+        if (selfSummary) selfSummary.hidden = mode === 'others';
+        if (assigneeField) assigneeField.hidden = mode !== 'others';
+        if (assigneeSelect) {
+            assigneeSelect.disabled = mode !== 'others';
+            assigneeSelect.required = mode === 'others';
+            if (mode !== 'others') [...assigneeSelect.options].forEach(option => { option.selected = false; });
+        }
+        if (mode === 'self') {
+            const selfOption = form.querySelector('[data-standalone-assignment-mode][value="self"]');
+            if (selfOption) selfOption.checked = true;
+        }
+    }
+
     function statusBadge(status) {
         return `<span class="tf-status status-${esc(status)}">${esc(labels[status] || status)}</span>`;
     }
@@ -396,10 +418,11 @@
     function taskCard(task) {
         const standalone = Number(task.is_standalone) === 1;
         const canWork = Number(task.can_work) === 1;
+        const createdForOthers = Number(task.created_by_me) === 1 && !canWork;
         const workActions = canWork && task.status === 'open' ? `<button class="tf-button tiny secondary" data-task-start="${Number(task.id)}">شروع</button>` : (canWork && task.status === 'in_progress' ? `<button class="tf-link" data-task-report="${Number(task.id)}">ثبت گزارش</button><button class="tf-link" data-task-complete="${Number(task.id)}">تکمیل</button>` : statusBadge(task.status));
         const archiveAction = state.capabilities.tasks_manage && task.status === 'completed' && !task.archived_at ? `<button class="tf-link" data-task-archive="${Number(task.id)}">آرشیو</button>` : '';
         const restoreAction = state.capabilities.tasks_manage && task.archived_at ? `<button class="tf-link" data-task-restore="${Number(task.id)}">بازگردانی</button>` : '';
-        return `<article class="tf-task-card ${task.archived_at ? 'is-archived' : ''}"><header><span class="tf-type" style="--type-color:${esc(task.task_type_color)}">${esc(task.task_type_name)}</span>${standalone ? '<span class="tf-independent">مستقل</span>' : ''}</header><h3>${esc(task.title)}</h3><p>${standalone ? 'بدون پروژه' : `پروژه: ${esc(task.order_title)}`}</p><small>مسئول: ${esc(task.assignee_names || 'تعیین نشده')}</small>${task.due_at ? `<small>موعد: ${esc(String(task.due_at).slice(0, 16))}</small>` : ''}<footer>${task.archived_at ? statusBadge('completed') : workActions}${archiveAction}${restoreAction}<button class="tf-link push" data-task-open="${Number(task.id)}">${task.status === 'completed' ? 'مشاهده گزارش‌ها' : 'جزئیات و مسئولان'}</button></footer></article>`;
+        return `<article class="tf-task-card ${task.archived_at ? 'is-archived' : ''}"><header><span class="tf-type" style="--type-color:${esc(task.task_type_color)}">${esc(task.task_type_name)}</span>${standalone ? '<span class="tf-independent">مستقل</span>' : ''}${createdForOthers ? '<span class="tf-independent delegated">واگذارشده توسط من</span>' : ''}</header><h3>${esc(task.title)}</h3><p>${standalone ? 'بدون پروژه' : `پروژه: ${esc(task.order_title)}`}</p><small>مسئول: ${esc(task.assignee_names || 'تعیین نشده')}</small>${task.due_at ? `<small>موعد: ${esc(String(task.due_at).slice(0, 16))}</small>` : ''}<footer>${task.archived_at ? statusBadge('completed') : workActions}${archiveAction}${restoreAction}<button class="tf-link push" data-task-open="${Number(task.id)}">${task.status === 'completed' ? 'مشاهده گزارش‌ها' : 'جزئیات و مسئولان'}</button></footer></article>`;
     }
 
     function renderTasks() {
@@ -603,13 +626,13 @@
         const canWork = Number(task.can_work) === 1;
         const taskArchived = Boolean(task.archived_at);
         const readOnly = taskArchived || Boolean(task.project_archived_at);
-        const editable = canManage && !readOnly && Number(task.is_standalone) === 1 && !['completed', 'cancelled'].includes(task.status);
+        const editable = Number(task.can_edit) === 1 && !readOnly;
         target.innerHTML = `<header><div><span class="tf-type" style="--type-color:${esc(task.task_type_color)}">${esc(task.task_type_name)}</span><h2>${esc(task.title)}</h2><p>${Number(task.is_standalone) ? 'تسک مستقل' : `پروژه: ${esc(task.order_title)}`}</p></div><button type="button" data-close-modal>×</button></header>
-            <div class="tf-task-summary">${statusBadge(task.status)}${readOnly ? '<span class="tf-status status-disabled">فقط‌خواندنی / آرشیوشده</span>' : ''}<span>موعد: ${esc(task.due_at ? String(task.due_at).slice(0, 16) : 'ندارد')}</span><span>مسئولان: ${esc((task.assignees || []).map(user => user.name).join('، ') || 'تعیین نشده')}</span></div>
+            <div class="tf-task-summary">${statusBadge(task.status)}${Number(task.created_by_me) === 1 && !canWork ? '<span class="tf-status status-open">واگذارشده توسط من</span>' : ''}${readOnly ? '<span class="tf-status status-disabled">فقط‌خواندنی / آرشیوشده</span>' : ''}<span>موعد: ${esc(task.due_at ? String(task.due_at).slice(0, 16) : 'ندارد')}</span><span>مسئولان: ${esc((task.assignees || []).map(user => user.name).join('، ') || 'تعیین نشده')}</span></div>
             ${editable ? `<form class="tf-form-grid tf-subform" data-edit-task><input type="hidden" name="task_id" value="${Number(task.id)}"><label class="span-2">عنوان<input name="title" required value="${esc(task.title)}"></label><label>نوع<select name="task_type_id">${(state.reference.task_types || []).filter(item => Number(item.is_active)).map(item => `<option value="${Number(item.id)}" ${Number(item.id) === Number(task.task_type_id) ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label><label>موعد<input type="datetime-local" name="due_at" value="${esc(dateTimeValue(task.due_at))}"></label><label class="span-2">توضیحات<textarea name="description">${esc(task.description || '')}</textarea></label><button class="tf-button secondary span-2">ذخیره مشخصات تسک</button></form>` : `<p class="tf-task-description">${esc(task.description || 'توضیحی ثبت نشده است.')}</p>`}
             ${canManage && !readOnly && !['completed', 'cancelled'].includes(task.status) ? `<form class="tf-assignment-box" data-task-assignees><input type="hidden" name="task_id" value="${Number(task.id)}"><label><strong>تغییر مسئولان</strong><small>${task.order_id ? 'فقط اعضای فعال همین پروژه؛' : 'یک یا چند کاربر فعال؛'} انجام توسط یک نفر کافی است.</small><select name="user_ids" multiple required>${(task.eligible_assignees || []).map(user => `<option value="${Number(user.id)}" ${assigneeIds.includes(Number(user.id)) ? 'selected' : ''}>${esc(user.name)} — ${esc(user.email)}</option>`).join('')}</select></label><button class="tf-button">ذخیره مسئولان</button></form>` : ''}
             <section class="tf-report-list"><h3>گزارش‌های انجام کار</h3>${(task.reports || []).map(report => `<article><strong>${esc(report.user_name)}</strong><p>${esc(report.report_text)}</p><small>${esc(report.created_at)}</small></article>`).join('') || '<p class="tf-muted">هنوز گزارشی ثبت نشده است.</p>'}</section>
-            <footer>${canWork && !readOnly && task.status === 'open' ? `<button class="tf-button secondary" data-task-start="${Number(task.id)}">شروع</button>` : ''}${canWork && !readOnly && task.status === 'in_progress' ? `<button class="tf-button secondary" data-task-report="${Number(task.id)}">ثبت گزارش</button><button class="tf-button" data-task-complete="${Number(task.id)}">تکمیل تسک</button>` : ''}${canManage && !readOnly && task.status === 'completed' ? `<button class="tf-button secondary" data-task-archive="${Number(task.id)}">آرشیو وظیفه</button>` : ''}${canManage && taskArchived && !task.project_archived_at ? `<button class="tf-button" data-task-restore="${Number(task.id)}">بازگردانی از آرشیو</button>` : ''}${canManage && !readOnly && Number(task.is_standalone) ? `<button class="tf-button danger push" data-delete-task="${Number(task.id)}">حذف تسک مستقل</button>` : ''}</footer>`;
+            <footer>${canWork && !readOnly && task.status === 'open' ? `<button class="tf-button secondary" data-task-start="${Number(task.id)}">شروع</button>` : ''}${canWork && !readOnly && task.status === 'in_progress' ? `<button class="tf-button secondary" data-task-report="${Number(task.id)}">ثبت گزارش</button><button class="tf-button" data-task-complete="${Number(task.id)}">تکمیل تسک</button>` : ''}${Number(task.can_cancel) === 1 ? `<button class="tf-button danger push" data-cancel-task="${Number(task.id)}">لغو تسک</button>` : ''}${canManage && !readOnly && task.status === 'completed' ? `<button class="tf-button secondary" data-task-archive="${Number(task.id)}">آرشیو وظیفه</button>` : ''}${canManage && taskArchived && !task.project_archived_at ? `<button class="tf-button" data-task-restore="${Number(task.id)}">بازگردانی از آرشیو</button>` : ''}${canManage && !readOnly && Number(task.is_standalone) ? `<button class="tf-button danger push" data-delete-task="${Number(task.id)}">حذف تسک مستقل</button>` : ''}</footer>`;
     }
 
     function prepareUser(user) {
@@ -716,7 +739,7 @@
         const close = event.target.closest('[data-close-modal]');
         if (close) { closeModal(close); return; }
         if (event.target.closest('[data-open-project]')) { if (!(state.reference.templates || []).some(item => Number(item.is_active))) { toast(canView('workflows') ? 'ابتدا یک قالب گردش‌کار بساز.' : 'قالب گردش‌کار فعالی وجود ندارد؛ با مدیر سامانه هماهنگ کنید.', 'error'); if (canView('workflows')) go('workflows'); return; } const form = root.querySelector('[data-create-project]'); resetModalForm(form); fillOptions(form); openModal('project'); return; }
-        if (event.target.closest('[data-open-quick-task]')) { if (!(state.reference.task_types || []).some(item => Number(item.is_active))) { toast(canView('task-types') ? 'ابتدا یک نوع وظیفه بساز.' : 'نوع وظیفه فعالی وجود ندارد؛ با مدیر سامانه هماهنگ کنید.', 'error'); if (canView('task-types')) go('task-types'); return; } const form = root.querySelector('[data-create-quick-task]'); resetModalForm(form); fillOptions(form); openModal('quick-task'); return; }
+        if (event.target.closest('[data-open-quick-task]')) { if (!(state.reference.task_types || []).some(item => Number(item.is_active))) { toast(canView('task-types') ? 'ابتدا یک نوع وظیفه بساز.' : 'نوع وظیفه فعالی وجود ندارد؛ با مدیر سامانه هماهنگ کنید.', 'error'); if (canView('task-types')) go('task-types'); return; } const form = root.querySelector('[data-create-quick-task]'); resetModalForm(form); fillOptions(form); syncStandaloneAssignmentForm(form); openModal('quick-task'); return; }
         if (event.target.closest('[data-open-template]')) { prepareTemplate(); return; }
         if (event.target.closest('[data-open-task-type]')) { prepareTaskType(); return; }
         if (event.target.closest('[data-open-customer]')) { prepareCustomer(); return; }
@@ -838,7 +861,7 @@
             openModal('project-dependencies'); return;
         }
 
-        const action = event.target.closest('[data-task-start],[data-task-report],[data-task-complete],[data-task-archive],[data-task-restore],[data-delete-task],[data-project-activate],[data-project-archive],[data-project-restore],[data-remove-project-member],[data-disable-project-stage],[data-disable-template-stage],[data-delete-template-stage],[data-remove-team-member],[data-toggle-team-lead],[data-delete-project],[data-delete-template],[data-delete-task-type],[data-delete-customer],[data-delete-role],[data-read-notifications],[data-refresh]');
+        const action = event.target.closest('[data-task-start],[data-task-report],[data-task-complete],[data-task-archive],[data-task-restore],[data-cancel-task],[data-delete-task],[data-project-activate],[data-project-archive],[data-project-restore],[data-remove-project-member],[data-disable-project-stage],[data-disable-template-stage],[data-delete-template-stage],[data-remove-team-member],[data-toggle-team-lead],[data-delete-project],[data-delete-template],[data-delete-task-type],[data-delete-customer],[data-delete-role],[data-read-notifications],[data-refresh]');
         if (!action) return;
         action.disabled = true;
         try {
@@ -879,6 +902,12 @@
                 await api(`tasks/${action.dataset.taskRestore}/restore`, { method: 'POST' });
                 if (action.closest('dialog')) closeModal(action);
                 await Promise.all([loadTasks(), loadArchives(), loadOverview()]);
+            }
+            else if (action.dataset.cancelTask) {
+                if (!await window.AppModal.confirm('تسک از برد کار مسئولان خارج می‌شود اما سابقه ساخت و لغو آن حفظ خواهد شد.', { title: 'لغو تسک مستقل', confirmText: 'لغو تسک', tone: 'danger' })) return;
+                await api(`tasks/${action.dataset.cancelTask}/cancel`, { method: 'POST' });
+                closeModal(action);
+                await Promise.all([loadTasks(), loadOverview(), loadNotifications()]);
             }
             else if (action.dataset.deleteTask) {
                 if (!await window.AppModal.confirm('این تسک مستقل همراه تمام گزارش‌های آن برای همیشه حذف می‌شود.', { title: 'حذف تسک مستقل', confirmText: 'حذف تسک', tone: 'danger' })) return;
@@ -979,6 +1008,7 @@
 
     root.addEventListener('change', async event => {
         if (event.target.matches('[data-role-choice]')) renderEffectivePermissions(event.target.closest('form'));
+        if (event.target.matches('[data-standalone-assignment-mode]')) syncStandaloneAssignmentForm(event.target.closest('form'));
         if (event.target.matches('[data-template-sort]')) {
             state.templateSort = event.target.value || 'name';
             renderTemplates({ resetScroll: true });
