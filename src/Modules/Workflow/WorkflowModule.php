@@ -125,6 +125,11 @@ final class WorkflowModule implements Module
             ];
         }), [$authenticated]);
         $router->get('/api/v1/workflow/templates', $endpoint(static fn () => ['templates' => $repository->templates()]), [$authenticated, $permission('templates.manage')]);
+        $router->get('/api/v1/workflow/templates/{id}', $endpoint(static function (Request $request, array $params) use ($repository): array {
+            $template = $repository->template((int) ($params['id'] ?? 0));
+            if ($template === null) throw new RuntimeException('قالب گردش‌کار پیدا نشد.');
+            return ['template' => $template];
+        }), [$authenticated, $permission('templates.manage')]);
         $router->get('/api/v1/workflow/orders', $endpoint(static fn (Request $request) => ['orders' => $repository->orders([
             'status' => $request->query('status', ''),
             'priority_id' => $request->query('priority_id', ''),

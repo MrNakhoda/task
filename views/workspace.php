@@ -140,7 +140,28 @@ $pageScript = $to('/assets/workflow.js') . '?v=' . (string) @filemtime(APP_ROOT 
         <section class="tf-view" data-view="workflows" data-view-requires="templates_manage" hidden>
             <div class="tf-page-head"><div><span>الگوی قابل استفاده مجدد</span><h1>قالب‌های گردش‌کار</h1><p>یک بار مراحل تولید را تعریف کن و برای پروژه‌های بعدی دوباره استفاده کن.</p></div><button class="tf-button" data-open-template data-requires="templates_manage" hidden>+ قالب جدید</button></div>
             <div class="tf-context-help"><b>ترتیب پیشنهادی</b><span>اول نوع وظیفه بساز، بعد قالب را ایجاد کن، سپس مراحل و پیش‌نیاز هر مرحله را مشخص کن. مسئول پیش‌فرض می‌تواند کاربر، تیم یا نقش باشد.</span><button data-go="task-types">مدیریت نوع وظیفه</button></div>
-            <div class="tf-workflow-layout"><aside class="tf-card tf-template-list" data-template-list></aside><section class="tf-card tf-template-editor" data-template-editor><div class="tf-empty"><strong>یک قالب را انتخاب کن</strong><p>مراحل، پیش‌نیازها و مسئولان پیش‌فرض اینجا نمایش داده می‌شوند.</p></div></section></div>
+            <div class="tf-workflow-layout">
+                <aside class="tf-card tf-template-list" data-template-list>
+                    <header><div><h2>قالب‌ها</h2><small data-template-result-count>در حال دریافت…</small></div><span data-template-total>۰</span></header>
+                    <div class="tf-template-tools">
+                        <label class="tf-template-search">
+                            <svg aria-hidden="true"><use href="#tf-i-search"/></svg>
+                            <input type="search" data-template-search placeholder="نام قالب، توضیح یا مرحله…" autocomplete="off" aria-label="جست‌وجوی قالب‌ها">
+                            <button type="button" data-clear-template-search aria-label="پاک‌کردن جست‌وجو" hidden><svg aria-hidden="true"><use href="#tf-i-close"/></svg></button>
+                        </label>
+                        <div class="tf-template-controls">
+                            <div class="tf-template-status" role="group" aria-label="فیلتر وضعیت قالب">
+                                <button type="button" data-template-status="" class="is-active" aria-pressed="true">همه</button>
+                                <button type="button" data-template-status="active" aria-pressed="false">فعال</button>
+                                <button type="button" data-template-status="disabled" aria-pressed="false">غیرفعال</button>
+                            </div>
+                            <label class="tf-template-sort"><span class="tf-sr-only">مرتب‌سازی قالب‌ها</span><select data-template-sort aria-label="مرتب‌سازی قالب‌ها"><option value="name">نام قالب</option><option value="updated">آخرین ویرایش</option><option value="steps">تعداد مراحل</option></select></label>
+                        </div>
+                    </div>
+                    <div class="tf-template-results" data-template-results aria-live="polite"></div>
+                </aside>
+                <section class="tf-card tf-template-editor" data-template-editor><div class="tf-empty"><strong>یک قالب را انتخاب کن</strong><p>مراحل، پیش‌نیازها و مسئولان پیش‌فرض اینجا نمایش داده می‌شوند.</p></div></section>
+            </div>
         </section>
 
         <section class="tf-view" data-view="task-types" data-view-requires="templates_manage" hidden>

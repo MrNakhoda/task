@@ -321,6 +321,28 @@ $test('task work and project read permissions are enforced', static function () 
     $assert(str_contains($repository, "\$canWorkAssigned ? \"EXISTS"));
 });
 
+$test('workflow template browser stays usable and efficient at scale', static function () use ($assert): void {
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $stylesheet = file_get_contents(APP_ROOT . '/public/assets/app.css');
+    $assert(is_string($module) && str_contains($module, "get('/api/v1/workflow/templates/{id}'"), 'Template details must have a dedicated read endpoint.');
+    $assert(substr_count($module, "\$permission('templates.manage')") >= 10, 'Template endpoints must stay permission protected.');
+    $assert(is_string($repository) && str_contains($repository, 'public function template(int $templateId): ?array'));
+    $assert(str_contains($repository, "GROUP_CONCAT(s.name ORDER BY s.position,s.id SEPARATOR ' ')"), 'Template summaries must include searchable stage names without eager detail loading.');
+    $assert(str_contains($repository, 'WHERE step_id IN ({$placeholders})'), 'Template relations must be loaded in batches.');
+    foreach (['data-template-search', 'data-template-status="active"', 'data-template-status="disabled"', 'data-template-sort', 'data-template-results'] as $control) {
+        $assert(is_string($view) && str_contains($view, $control), 'Missing template browser control: ' . $control);
+    }
+    foreach (['normalizeTemplateSearch', 'filteredTemplates', 'templateDetailRequest', "api(`templates/\${Number(templateId)}`)", '160'] as $behavior) {
+        $assert(is_string($javascript) && str_contains($javascript, $behavior), 'Missing template browser behavior: ' . $behavior);
+    }
+    $assert(str_contains($javascript, "replace(/[\\u064A\\u0649]/g, 'ی')"), 'Persian and Arabic Yeh variants must search consistently.');
+    $assert(is_string($stylesheet) && str_contains($stylesheet, '.tf-template-results { min-height: 150px; overflow-y: auto;'));
+    $assert(str_contains($stylesheet, '.tf-template-list { position: sticky;'), 'Desktop template navigation must remain visible while editing.');
+});
+
 $test('dangerous test-data wipe is absent from production workspace', static function () use ($assert): void {
     $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
     $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
