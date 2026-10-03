@@ -111,33 +111,71 @@ final class WorkflowRepository
     {
         $templates = Table::name('workflow_templates');
         $steps = Table::name('workflow_template_steps');
+        $sql = "SELECT wt.id,wt.name,wt.description,wt.version,wt.is_active,wt.created_at,wt.updated_at,
+            (SELECT COUNT(*) FROM {$steps} s WHERE s.workflow_template_id=wt.id AND s.is_active=1) step_count,
+            (SELECT GROUP_CONCAT(s.name ORDER BY s.position,s.id SEPARATOR ' ') FROM {$steps} s WHERE s.workflow_template_id=wt.id) step_names
+            FROM {$templates} wt
+            WHERE wt.deleted_at IS NULL
+            ORDER BY wt.is_active DESC,wt.name,wt.id";
+        return Connection::get()->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function template(int $templateId): ?array
+    {
+        $templates = Table::name('workflow_templates');
+        $steps = Table::name('workflow_template_steps');
         $types = Table::name('task_types');
         $dependencies = Table::name('workflow_template_step_dependencies');
         $stepUsers = Table::name('workflow_template_step_users');
         $stepTeams = Table::name('workflow_template_step_teams');
         $stepRoles = Table::name('workflow_template_step_roles');
-        $sql = "SELECT wt.*, (SELECT COUNT(*) FROM {$steps} s WHERE s.workflow_template_id=wt.id AND s.is_active=1) step_count FROM {$templates} wt WHERE wt.deleted_at IS NULL ORDER BY wt.updated_at DESC";
-        $items = Connection::get()->query($sql)->fetchAll(PDO::FETCH_ASSOC);
-        $stepQuery = Connection::get()->prepare("SELECT s.*,tt.name task_type_name FROM {$steps} s JOIN {$types} tt ON tt.id=s.task_type_id WHERE s.workflow_template_id=? ORDER BY s.position,s.id");
-        $depQuery = Connection::get()->prepare("SELECT depends_on_step_id FROM {$dependencies} WHERE step_id=? ORDER BY depends_on_step_id");
-        foreach ($items as &$template) {
-            $stepQuery->execute([(int) $template['id']]);
-            $template['steps'] = $stepQuery->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($template['steps'] as &$step) {
-                $depQuery->execute([(int) $step['id']]);
-                $step['dependencies'] = array_map('intval', $depQuery->fetchAll(PDO::FETCH_COLUMN));
-                foreach ([
-                    'user_ids' => [$stepUsers, 'user_id'],
-                    'team_ids' => [$stepTeams, 'team_id'],
-                    'role_ids' => [$stepRoles, 'role_id'],
-                ] as $key => [$relationTable, $relationColumn]) {
-                    $relation = Connection::get()->prepare("SELECT {$relationColumn} FROM {$relationTable} WHERE step_id=?");
-                    $relation->execute([(int) $step['id']]);
-                    $step[$key] = array_map('intval', $relation->fetchAll(PDO::FETCH_COLUMN));
+        $pdo = Connection::get();
+
+        $query = $pdo->prepare("SELECT wt.*,(SELECT COUNT(*) FROM {$steps} active_step WHERE active_step.workflow_template_id=wt.id AND active_step.is_active=1) step_count FROM {$templates} wt WHERE wt.id=? AND wt.deleted_at IS NULL");
+        $query->execute([$templateId]);
+        $template = $query->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($template)) {
+            return null;
+        }
+
+        $stepQuery = $pdo->prepare("SELECT s.*,tt.name task_type_name FROM {$steps} s JOIN {$types} tt ON tt.id=s.task_type_id WHERE s.workflow_template_id=? ORDER BY s.position,s.id");
+        $stepQuery->execute([$templateId]);
+        $template['steps'] = $stepQuery->fetchAll(PDO::FETCH_ASSOC);
+        if ($template['steps'] === []) {
+            return $template;
+        }
+
+        $stepIndex = [];
+        $stepIds = [];
+        foreach ($template['steps'] as $index => &$step) {
+            $stepId = (int) $step['id'];
+            $stepIds[] = $stepId;
+            $stepIndex[$stepId] = $index;
+            $step['dependencies'] = [];
+            $step['user_ids'] = [];
+            $step['team_ids'] = [];
+            $step['role_ids'] = [];
+        }
+        unset($step);
+
+        $placeholders = implode(',', array_fill(0, count($stepIds), '?'));
+        foreach ([
+            'dependencies' => [$dependencies, 'depends_on_step_id'],
+            'user_ids' => [$stepUsers, 'user_id'],
+            'team_ids' => [$stepTeams, 'team_id'],
+            'role_ids' => [$stepRoles, 'role_id'],
+        ] as $key => [$relationTable, $relationColumn]) {
+            $relation = $pdo->prepare("SELECT step_id,{$relationColumn} related_id FROM {$relationTable} WHERE step_id IN ({$placeholders}) ORDER BY step_id,{$relationColumn}");
+            $relation->execute($stepIds);
+            foreach ($relation->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $stepId = (int) $row['step_id'];
+                if (isset($stepIndex[$stepId])) {
+                    $template['steps'][$stepIndex[$stepId]][$key][] = (int) $row['related_id'];
                 }
             }
         }
-        return $items;
+
+        return $template;
     }
 
     public function orders(array $filters = [], ?int $userId = null, bool $manageAll = true): array
