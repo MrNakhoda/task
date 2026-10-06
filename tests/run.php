@@ -312,7 +312,7 @@ $test('task work and project read permissions are enforced', static function () 
     $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
     $assert(is_string($module) && str_contains($module, "\$taskWorkPermission = \$anyPermission(['tasks.manage', 'tasks.work'])"));
     $assert(str_contains($module, "\$projectReadPermission = \$anyPermission(['orders.manage', 'orders.read'])"));
-    $assert(substr_count($module, '$taskWorkPermission') >= 4, 'All three task work routes must use the permission middleware.');
+    $assert(substr_count($module, '$taskWorkPermission') >= 5, 'All task work state routes must use the permission middleware.');
     $assert(substr_count($module, '$projectReadPermission') >= 5, 'Project list and detail routes must use read permission middleware.');
     $assert(is_string($repository) && str_contains($repository, 'bool $canWorkAssigned'));
     $assert(str_contains($repository, "\$canWorkAssigned ? \"EXISTS"));
@@ -361,12 +361,40 @@ $test('standalone task creation permissions are separated and enforced end to en
     $assert(str_contains($repository, "status='open' AND started_at IS NULL AND created_by=?"), 'Creators may only edit their own unstarted task.');
     $assert(str_contains($repository, 't.is_standalone=1 AND t.created_by=?'), 'Delegators must retain read access to tasks they created.');
     $assert(is_string($view) && substr_count($view, 'data-requires="tasks_create_self"') === 2);
-    $assert(str_contains($view, 'name="assignment_mode" value="self" checked'));
-    $assert(str_contains($view, 'name="assignment_mode" value="others"'));
+    $assert(str_contains($view, 'type="hidden" name="assignment_mode" value="self" data-standalone-assignment-mode'));
+    $assert(!str_contains($view, 'این تسک برای چه کسی است؟'), 'The redundant standalone assignment mode chooser must be removed.');
+    $assert(str_contains($view, 'data-standalone-assignees hidden'));
     $assert(is_string($javascript) && str_contains($javascript, 'function syncStandaloneAssignmentForm(form)'));
+    $assert(str_contains($javascript, "canAssignOthers ? 'others' : 'self'"), 'Users with assignment permission must default directly to selecting assignees.');
     $assert(str_contains($javascript, 'data-cancel-task') && str_contains($javascript, '/cancel`'));
     $assert(str_contains($javascript, 'واگذارشده توسط من'));
     $assert(is_string($guide) && str_contains($guide, '`tasks.create.self`') && str_contains($guide, '`tasks.create.assign`'));
+});
+
+$test('project members are derived from template teams and started tasks can return to ready', static function () use ($assert): void {
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $engine = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowEngine.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $guide = file_get_contents(APP_ROOT . '/docs/USER_GUIDE_FA.md');
+    $assert(is_string($module) && str_contains($module, "post('/api/v1/workflow/tasks/{id}/return-to-ready'"));
+    $assert(is_string($engine) && str_contains($engine, 'public function returnTaskToReady'));
+    $assert(str_contains($engine, "SET status='open',started_by=NULL,started_at=NULL"));
+    $assert(str_contains($engine, "'task.returned_to_ready'"));
+    $assert(str_contains($engine, "'عضو خودکار از تیم قالب'"));
+    $assert(str_contains($engine, 'automatic_project_member_count'));
+    $assert(is_string($repository));
+    $assert(preg_match('/public function createWorkflowProject\(.*?public function updateWorkflowProject\(/s', $repository, $match) === 1);
+    $assert(!str_contains($match[0], 'member_ids'), 'New project creation must not accept a forged manual member list.');
+    $assert(is_string($view) && !str_contains($view, 'name="member_ids"'), 'The new-project modal must not ask for members.');
+    $assert(str_contains($view, 'اعضای پروژه خودکار تعیین می‌شوند'));
+    $assert(!str_contains($view, 'این تسک برای چه کسی است؟'));
+    $assert(is_string($javascript) && str_contains($javascript, 'data-task-reset'));
+    $assert(str_contains($javascript, '/return-to-ready`'));
+    $assert(str_contains($javascript, 'گزارش‌های ثبت‌شده و تاریخچه حذف نمی‌شوند'));
+    $assert(is_string($guide) && str_contains($guide, 'اعضای فعال همهٔ تیم‌های مسئول'));
+    $assert(str_contains($guide, 'به «آماده شروع» برگرداند'));
 });
 
 $test('template guides and team-owned stages are safe and project-stable', static function () use ($assert): void {
@@ -390,7 +418,7 @@ $test('template guides and team-owned stages are safe and project-stable', stati
     $assert(str_contains($repository, 'COALESCE(MAX(position),0)+10'), 'Template step order must be assigned automatically.');
     $assert(str_contains($repository, '$position, 1]);'), 'New template steps must use equal automatic weight.');
     $assert(str_contains($repository, "\$data['team_id']"), 'A responsible team is required server-side.');
-    $assert(is_string($engine) && str_contains($engine, 'هیچ عضو فعال پروژه در تیم مسئول'));
+    $assert(is_string($engine) && str_contains($engine, 'تیم مسئول هیچ عضو فعالی ندارد'));
     $assert(str_contains($engine, 'snapshotTemplateAttachments'));
     $assert(!str_contains($engine, '$defaultIds === [] ? $memberIds'), 'Activation must never fall back to assigning every project member.');
     $assert(is_string($upload) && str_contains($upload, "'application/pdf' => 'pdf'"));

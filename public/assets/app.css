@@ -454,7 +454,7 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-task-card h3, .tf-task-card p { margin: 0; }
 .tf-task-card h3 { font-size: 13px; }
 .tf-task-card p, .tf-task-card small { color: #7c8699; font-size: 10px; }
-.tf-task-card footer { margin-top: 5px; padding-top: 10px; border-top: 1px solid #eef1f5; }
+.tf-task-card footer { flex-wrap: wrap; margin-top: 5px; padding-top: 10px; border-top: 1px solid #eef1f5; }
 .tf-task-card footer .tf-status { margin-right: auto; }
 .tf-type { padding-right: 8px; border-right: 3px solid var(--type-color, #4969e8); color: #5d687d; font-size: 9px; font-weight: 900; }
 .tf-independent { margin-right: auto; padding: 2px 7px; border-radius: 6px; background: #f1eafa; color: #7e4fc7; font-size: 9px; font-weight: 900; }

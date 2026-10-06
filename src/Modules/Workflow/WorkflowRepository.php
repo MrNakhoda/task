@@ -932,7 +932,6 @@ final class WorkflowRepository
     public function createWorkflowProject(array $data, int $actorId): int
     {
         $projects = Table::name('projects');
-        $members = Table::name('project_members');
         $orders = Table::name('work_orders');
         $orderCustomers = Table::name('order_customers');
         $name = $this->required((string) ($data['name'] ?? $data['title'] ?? ''), 'نام پروژه');
@@ -943,13 +942,6 @@ final class WorkflowRepository
         try {
             $pdo->prepare("INSERT INTO {$projects} (name,code,description,status,due_at,created_by) VALUES (?,?,?,'active',?,?)")->execute([$name, $code, $data['description'] ?? null, ($data['due_at'] ?? '') !== '' ? substr((string) $data['due_at'], 0, 10) : null, $actorId]);
             $containerId = (int) $pdo->lastInsertId();
-
-            $memberIds = $this->ids($data['member_ids'] ?? []);
-            $memberIds[] = $actorId;
-            $memberIds = array_values(array_unique($memberIds));
-            $this->assertActiveUsers($memberIds);
-            $addMember = $pdo->prepare("INSERT IGNORE INTO {$members} (project_id,user_id,role_label) VALUES (?,?,?)");
-            foreach ($memberIds as $userId) $addMember->execute([$containerId, $userId, null]);
 
             $pdo->prepare("INSERT INTO {$orders} (order_number,title,project_id,workflow_template_id,priority_id,details_json,due_at,created_by) VALUES (?,?,?,?,?,?,?,?)")->execute([
                 $code,
@@ -965,7 +957,7 @@ final class WorkflowRepository
             if ((int) ($data['customer_id'] ?? 0) > 0) {
                 $pdo->prepare("INSERT INTO {$orderCustomers} (order_id,customer_id,weight,weight_unit) VALUES (?,?,?,'gram')")->execute([$projectId, (int) $data['customer_id'], ($data['weight'] ?? '') !== '' ? (float) $data['weight'] : null]);
             }
-            $this->history($projectId, null, $actorId, 'project.created', 'پروژه ایجاد شد.', ['code' => $code, 'member_ids' => $memberIds]);
+            $this->history($projectId, null, $actorId, 'project.created', 'پروژه ایجاد شد؛ اعضا هنگام شروع از تیم‌های مسئول قالب اضافه می‌شوند.', ['code' => $code]);
             $pdo->commit();
             return $projectId;
         } catch (\Throwable $exception) {
