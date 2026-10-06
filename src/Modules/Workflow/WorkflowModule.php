@@ -282,6 +282,11 @@ final class WorkflowModule implements Module
             $engine->startTask((int) ($params['id'] ?? 0), $userId, $mayManageTasks($userId));
             return [];
         }), [$authenticated, $csrf, $taskWorkPermission]);
+        $router->post('/api/v1/workflow/tasks/{id}/return-to-ready', $endpoint(static function (Request $request, array $params) use ($engine, $actor, $mayManageTasks): array {
+            $userId = $actor();
+            $engine->returnTaskToReady((int) ($params['id'] ?? 0), $userId, $mayManageTasks($userId));
+            return [];
+        }), [$authenticated, $csrf, $taskWorkPermission]);
         $router->post('/api/v1/workflow/tasks/{id}/reports', $endpoint(static fn (Request $request, array $params) => ['id' => $engine->addReport((int) ($params['id'] ?? 0), $actor(), (string) $request->input('report_text', ''), $mayManageTasks($actor()))], 201), [$authenticated, $csrf, $taskWorkPermission]);
         $router->post('/api/v1/workflow/tasks/{id}/complete', $endpoint(static function (Request $request, array $params) use ($engine, $actor, $mayManageTasks): array {
             $userId = $actor();

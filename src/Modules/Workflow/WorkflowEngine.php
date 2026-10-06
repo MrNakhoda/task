@@ -47,13 +47,31 @@ final class WorkflowEngine
                 throw new RuntimeException('قالب انتخاب‌شده هیچ مرحله فعالی ندارد.');
             }
 
+            $automaticMemberIds = [];
+            $automaticAssigneesByStep = [];
+            foreach ($templateSteps as $templateStep) {
+                $stepAssignees = $this->resolveTemplateAssignees((int) $templateStep['id'], null);
+                if ($stepAssignees === []) {
+                    throw new RuntimeException('برای مرحله «' . (string) $templateStep['name'] . '» تیم مسئول هیچ عضو فعالی ندارد.');
+                }
+                $automaticAssigneesByStep[(int) $templateStep['id']] = $stepAssignees;
+                array_push($automaticMemberIds, ...$stepAssignees);
+            }
+            $automaticMemberIds = array_values(array_unique(array_map('intval', $automaticMemberIds)));
+            $automaticMemberCount = 0;
+            if ($order['project_id'] !== null) {
+                $projectMembers = Table::name('project_members');
+                $memberInsert = $pdo->prepare("INSERT IGNORE INTO {$projectMembers} (project_id,user_id,role_label) VALUES (?,?,'عضو خودکار از تیم قالب')");
+                foreach ($automaticMemberIds as $userId) {
+                    $memberInsert->execute([(int) $order['project_id'], $userId]);
+                    $automaticMemberCount += $memberInsert->rowCount();
+                }
+            }
+
             $insert = $pdo->prepare("INSERT INTO {$steps} (order_id,source_template_step_id,task_type_id,name,description,position,progress_weight) VALUES (?,?,?,?,?,?,?)");
             $stepMap = [];
             foreach ($templateSteps as $templateStep) {
-                $resolvedAssignees = $this->resolveTemplateAssignees((int) $templateStep['id'], $order['project_id'] !== null ? (int) $order['project_id'] : null);
-                if ($resolvedAssignees === []) {
-                    throw new RuntimeException('برای مرحله «' . (string) $templateStep['name'] . '» هیچ عضو فعال پروژه در تیم مسئول انتخاب‌شده وجود ندارد.');
-                }
+                $resolvedAssignees = $automaticAssigneesByStep[(int) $templateStep['id']];
                 $insert->execute([$orderId, $templateStep['id'], $templateStep['task_type_id'], $templateStep['name'], $templateStep['description'], $templateStep['position'], $templateStep['progress_weight']]);
                 $stepId = (int) $pdo->lastInsertId();
                 $stepMap[(int) $templateStep['id']] = $stepId;
@@ -77,7 +95,7 @@ final class WorkflowEngine
             $guideCount = $this->repository->snapshotTemplateAttachments((int) $order['workflow_template_id'], $orderId);
 
             $pdo->prepare("UPDATE {$orders} SET status='active',activated_at=NOW() WHERE id=?")->execute([$orderId]);
-            $this->repository->history($orderId, null, $actorId, 'order.activated', 'سفارش فعال و گردش کار ساخته شد.', ['template_attachment_count' => $guideCount]);
+            $this->repository->history($orderId, null, $actorId, 'order.activated', 'سفارش فعال و گردش کار ساخته شد.', ['template_attachment_count' => $guideCount, 'automatic_project_member_count' => $automaticMemberCount]);
             $this->activateReadySteps($orderId, $actorId);
             $this->updateProgress($orderId, $actorId);
             $pdo->commit();
@@ -108,6 +126,27 @@ final class WorkflowEngine
                 $pdo->prepare("UPDATE {$tasks} SET status='in_progress',started_by=?,started_at=NOW() WHERE id=?")->execute([$actorId, $taskId]);
                 $this->repository->history($this->projectId($task), $taskId, $actorId, 'task.started', 'انجام وظیفه شروع شد.');
             }
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function returnTaskToReady(int $taskId, int $actorId, bool $manageAll): void
+    {
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $task = $this->lockedTask($taskId);
+            $this->assertTaskWritable($task);
+            $this->assertMayWork($taskId, $actorId, $manageAll);
+            if ((string) $task['status'] !== 'in_progress') {
+                throw new RuntimeException('فقط وظیفه در حال انجام قابل بازگردانی به آماده شروع است.');
+            }
+            $tasks = Table::name('tasks');
+            $pdo->prepare("UPDATE {$tasks} SET status='open',started_by=NULL,started_at=NULL WHERE id=?")->execute([$taskId]);
+            $this->repository->history($this->projectId($task), $taskId, $actorId, 'task.returned_to_ready', 'وظیفه به حالت آماده شروع بازگردانده شد.');
             $pdo->commit();
         } catch (\Throwable $exception) {
             if ($pdo->inTransaction()) $pdo->rollBack();
