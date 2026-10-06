@@ -457,7 +457,23 @@
         numericIds(step.user_ids).forEach(id => { const item = state.reference.users?.find(user => Number(user.id) === id); if (item) parts.push(item.name); });
         numericIds(step.team_ids).forEach(id => { const item = state.reference.teams?.find(team => Number(team.id) === id); if (item) parts.push(`تیم ${item.name}`); });
         numericIds(step.role_ids).forEach(id => { const item = state.reference.roles?.find(role => Number(role.id) === id); if (item) parts.push(`نقش ${item.display_name}`); });
-        return parts.length ? parts.join('، ') : 'همه اعضای پروژه';
+        return parts.length ? parts.join('، ') : 'بدون تیم مسئول';
+    }
+
+    function formatFileSize(bytes) {
+        const size = Number(bytes || 0);
+        if (size < 1024) return `${size.toLocaleString('fa-IR')} بایت`;
+        if (size < 1048576) return `${(size / 1024).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} کیلوبایت`;
+        return `${(size / 1048576).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} مگابایت`;
+    }
+
+    function templateGuideCard(item, project = false, manage = false) {
+        const id = Number(item.id);
+        const url = endpoint(`${project ? 'project-template-attachments' : 'template-attachments'}/${id}/file`);
+        const pdf = item.mime_type === 'application/pdf';
+        const preview = pdf ? '<span class="tf-guide-file-icon">PDF</span>' : `<img src="${esc(url)}" alt="${esc(item.title || item.original_name || 'فایل راهنما')}" loading="lazy">`;
+        const actions = !project && manage ? `<div class="tf-guide-file-actions"><button type="button" data-move-template-attachment="${id}" data-direction="up" aria-label="انتقال به بالا">↑</button><button type="button" data-move-template-attachment="${id}" data-direction="down" aria-label="انتقال به پایین">↓</button><button type="button" class="danger-text" data-delete-template-attachment="${id}">حذف</button></div>` : '';
+        return `<article class="tf-guide-file"><a href="${esc(url)}" target="_blank" rel="noopener">${preview}<span><strong>${esc(item.title || item.original_name || 'فایل راهنما')}</strong><small>${pdf ? 'فایل PDF' : 'تصویر'} · ${formatFileSize(item.size_bytes)}</small></span></a>${actions}</article>`;
     }
 
     function stageTaskActions(stage, readOnly = false) {
@@ -484,9 +500,10 @@
         target.innerHTML = `<header class="tf-project-hero"><div><div class="tf-project-kicker">${esc(project.order_number)} · ${esc(project.priority_name || 'اولویت عادی')}</div><h1>${esc(project.title)}</h1><p>${esc(customers || projectDescription(project) || 'بدون مشتری')}</p></div><div class="tf-project-score"><strong>${Number(project.progress_percent).toLocaleString('fa-IR')}٪</strong><span>پیشرفت پروژه</span></div></header>
             <div class="tf-project-toolbar">${archived ? '<span class="tf-status status-disabled">آرشیوشده</span>' : statusBadge(project.status)}${actions}${state.capabilities.system_admin ? `<button class="tf-button danger push" data-delete-project="${Number(project.id)}">حذف پروژه</button>` : ''}</div>
             <section class="tf-card tf-members"><div class="tf-card-head"><div><h2>۱. اعضای پروژه</h2><p>تسک‌های مراحل فقط بین افراد این پروژه توزیع می‌شوند.</p></div></div><div class="tf-member-pills">${(project.members || []).map(member => `<span><i>${esc(String(member.name).slice(0, 1))}</i>${esc(member.name)}<small>${esc(member.role_label || '')}</small>${state.capabilities.projects_manage && !archived ? `<button title="حذف عضو" data-remove-project-member="${Number(member.id)}">×</button>` : ''}</span>`).join('') || '<em>عضوی انتخاب نشده است.</em>'}</div>${state.capabilities.projects_manage && !archived ? `<form data-project-member="${Number(project.id)}" class="tf-inline-form"><select name="user_id" required>${(state.reference.users || []).filter(user => user.status === 'active').map(user => `<option value="${Number(user.id)}">${esc(user.name)}</option>`).join('')}</select><input name="role_label" placeholder="نقش در این پروژه؛ اختیاری"><button class="tf-button tiny">افزودن عضو</button></form>` : ''}</section>
-            <section class="tf-card tf-stages"><div class="tf-card-head"><div><h2>۲. مراحل و پیش‌نیازها</h2><p>وظیفه خودت را بدون خروج از پروژه شروع، گزارش یا تکمیل کن.</p></div></div><div class="tf-stage-flow">${(project.steps || []).map((stage, index) => { const dependencies = String(stage.dependency_ids || '').split(',').filter(Boolean).map(id => stageNames[Number(id)] || `#${id}`); return `<article class="tf-stage status-${esc(stage.status)}"><header><span>${(index + 1).toLocaleString('fa-IR')}</span>${statusBadge(stage.status)}</header><h3>${esc(stage.name)}</h3><p>${esc(stage.task_type_name)}</p><div class="tf-dependency">${dependencies.length ? `پیش‌نیاز: ${esc(dependencies.join('، '))}` : 'بدون پیش‌نیاز؛ شروع هم‌زمان'}</div>${stage.task_id ? `<div class="tf-stage-task"><strong>${esc(stage.assignee_names || 'بدون مسئول')}</strong>${statusBadge(stage.task_status)}</div><div class="tf-stage-work-actions">${stageTaskActions(stage, archived)}</div>` : '<div class="tf-stage-task muted">تسک هنوز ساخته نشده</div>'}${state.capabilities.projects_manage && !archived && !['completed', 'disabled'].includes(stage.status) ? `<div class="tf-stage-actions"><button data-edit-project-dependencies="${Number(stage.id)}">ویرایش پیش‌نیاز</button><button class="danger-text" data-disable-project-stage="${Number(stage.id)}">غیرفعال‌کردن</button></div>` : ''}</article>`; }).join('') || '<div class="tf-empty span-all"><strong>مرحله‌ها پس از شروع پروژه ساخته می‌شوند</strong><p>قبل از شروع، قالب و اعضای پروژه را بررسی کن.</p></div>'}</div></section>
-            <section class="tf-card tf-attachments"><div class="tf-card-head"><div><h2>۳. تصاویر و پیوست‌ها</h2><p>تصاویر مربوط به همین پروژه</p></div></div><div class="tf-attachment-grid">${(project.attachments || []).map(item => `<a href="${esc(fileUrl(item.path))}" target="_blank"><img src="${esc(fileUrl(item.path))}" alt="${esc(item.caption || item.original_name || 'پیوست پروژه')}"><span>${esc(item.caption || item.original_name || 'تصویر')}</span></a>`).join('') || '<div class="tf-empty small">هنوز تصویری اضافه نشده است.</div>'}</div>${state.capabilities.projects_manage && !archived ? `<form class="tf-inline-form tf-upload" data-project-attachment="${Number(project.id)}" enctype="multipart/form-data"><input type="file" name="image" accept="image/jpeg,image/png,image/webp" required><input name="caption" placeholder="توضیح تصویر؛ اختیاری"><button class="tf-button tiny">آپلود تصویر</button></form>` : ''}</section>
-            <section class="tf-card"><div class="tf-card-head"><div><h2>۴. تاریخچه پروژه</h2><p>چه کاری، توسط چه کسی و چه زمانی انجام شده است.</p></div></div><div class="tf-timeline">${(project.history || []).map(item => `<article><i></i><div><strong>${esc(item.message)}</strong><small>${esc(item.actor_name || 'سیستم')} · ${esc(item.created_at)}</small></div></article>`).join('') || '<div class="tf-empty small">رویدادی ثبت نشده.</div>'}</div></section>`;
+            <section class="tf-card tf-template-guides"><div class="tf-card-head"><div><h2>۲. راهنمای انجام پروژه</h2><p>نسخه ثابت فایل‌های راهنمای قالب در زمان شروع پروژه</p></div></div><div class="tf-template-guide-list">${(project.template_attachments || []).map(item => templateGuideCard(item, true)).join('') || `<div class="tf-empty small">${project.status === 'draft' ? 'فایل‌های راهنما پس از شروع پروژه اینجا ثبت می‌شوند.' : 'این قالب فایل راهنمایی نداشته است.'}</div>`}</div></section>
+            <section class="tf-card tf-stages"><div class="tf-card-head"><div><h2>۳. مراحل و پیش‌نیازها</h2><p>وظیفه خودت را بدون خروج از پروژه شروع، گزارش یا تکمیل کن.</p></div></div><div class="tf-stage-flow">${(project.steps || []).map((stage, index) => { const dependencies = String(stage.dependency_ids || '').split(',').filter(Boolean).map(id => stageNames[Number(id)] || `#${id}`); return `<article class="tf-stage status-${esc(stage.status)}"><header><span>${(index + 1).toLocaleString('fa-IR')}</span>${statusBadge(stage.status)}</header><h3>${esc(stage.name)}</h3><p>${esc(stage.task_type_name)}</p><div class="tf-dependency">${dependencies.length ? `پیش‌نیاز: ${esc(dependencies.join('، '))}` : 'بدون پیش‌نیاز؛ شروع هم‌زمان'}</div>${stage.task_id ? `<div class="tf-stage-task"><strong>${esc(stage.assignee_names || 'بدون مسئول')}</strong>${statusBadge(stage.task_status)}</div><div class="tf-stage-work-actions">${stageTaskActions(stage, archived)}</div>` : '<div class="tf-stage-task muted">تسک هنوز ساخته نشده</div>'}${state.capabilities.projects_manage && !archived && !['completed', 'disabled'].includes(stage.status) ? `<div class="tf-stage-actions"><button data-edit-project-dependencies="${Number(stage.id)}">ویرایش پیش‌نیاز</button><button class="danger-text" data-disable-project-stage="${Number(stage.id)}">غیرفعال‌کردن</button></div>` : ''}</article>`; }).join('') || '<div class="tf-empty span-all"><strong>مرحله‌ها پس از شروع پروژه ساخته می‌شوند</strong><p>قبل از شروع، قالب و اعضای پروژه را بررسی کن.</p></div>'}</div></section>
+            <section class="tf-card tf-attachments"><div class="tf-card-head"><div><h2>۴. تصاویر و پیوست‌ها</h2><p>تصاویر مربوط به همین پروژه</p></div></div><div class="tf-attachment-grid">${(project.attachments || []).map(item => `<a href="${esc(fileUrl(item.path))}" target="_blank"><img src="${esc(fileUrl(item.path))}" alt="${esc(item.caption || item.original_name || 'پیوست پروژه')}"><span>${esc(item.caption || item.original_name || 'تصویر')}</span></a>`).join('') || '<div class="tf-empty small">هنوز تصویری اضافه نشده است.</div>'}</div>${state.capabilities.projects_manage && !archived ? `<form class="tf-inline-form tf-upload" data-project-attachment="${Number(project.id)}" enctype="multipart/form-data"><input type="file" name="image" accept="image/jpeg,image/png,image/webp" required><input name="caption" placeholder="توضیح تصویر؛ اختیاری"><button class="tf-button tiny">آپلود تصویر</button></form>` : ''}</section>
+            <section class="tf-card"><div class="tf-card-head"><div><h2>۵. تاریخچه پروژه</h2><p>چه کاری، توسط چه کسی و چه زمانی انجام شده است.</p></div></div><div class="tf-timeline">${(project.history || []).map(item => `<article><i></i><div><strong>${esc(item.message)}</strong><small>${esc(item.actor_name || 'سیستم')} · ${esc(item.created_at)}</small></div></article>`).join('') || '<div class="tf-empty small">رویدادی ثبت نشده.</div>'}</div></section>`;
     }
 
     function filteredTemplates() {
@@ -557,7 +574,7 @@
         const editor = root.querySelector('[data-template-editor]');
         const names = Object.fromEntries((template.steps || []).map(step => [Number(step.id), step.name]));
         const manage = state.capabilities.templates_manage;
-        editor.innerHTML = `<header class="tf-editor-head"><div><span>قالب گردش‌کار</span><h2>${esc(template.name)}</h2><p>${esc(template.description || 'بدون توضیحات')}</p></div><div class="tf-head-actions">${manage ? `<button class="tf-button secondary" data-edit-template="${Number(template.id)}">ویرایش مشخصات</button><button class="tf-button" data-open-template-stage="${Number(template.id)}">+ مرحله</button>` : ''}${state.capabilities.system_admin ? `<button class="tf-button danger" data-delete-template="${Number(template.id)}">حذف قالب</button>` : ''}</div></header><div class="tf-template-stages">${(template.steps || []).map((step, index) => `<article class="${Number(step.is_active) ? '' : 'is-disabled'}"><span>${(index + 1).toLocaleString('fa-IR')}</span><div><h3>${esc(step.name)} ${Number(step.is_active) ? '' : '· غیرفعال'}</h3><p>${esc(step.task_type_name)} · سهم پیشرفت ${Number(step.progress_weight).toLocaleString('fa-IR')}</p><small>${(step.dependencies || []).length ? `بعد از: ${step.dependencies.map(id => esc(names[Number(id)] || `#${id}`)).join('، ')}` : 'بدون پیش‌نیاز؛ هم‌زمان با شروع پروژه'}</small><small>مسئول پیش‌فرض: ${esc(assignmentLabel(step))}</small>${manage ? `<div class="tf-stage-actions"><button data-edit-template-stage="${Number(step.id)}">ویرایش</button>${Number(step.is_active) ? `<button class="danger-text" data-disable-template-stage="${Number(step.id)}">غیرفعال‌کردن</button>` : ''}<button class="danger-text" data-delete-template-stage="${Number(step.id)}">حذف از قالب</button></div>` : ''}</div></article>`).join('') || '<div class="tf-empty"><strong>قالب هنوز مرحله‌ای ندارد</strong><p>اولین مرحله را اضافه کن.</p></div>'}</div>`;
+        editor.innerHTML = `<header class="tf-editor-head"><div><span>قالب گردش‌کار</span><h2>${esc(template.name)}</h2><p>${esc(template.description || 'بدون توضیحات')}</p></div><div class="tf-head-actions">${manage ? `<button class="tf-button secondary" data-edit-template="${Number(template.id)}">ویرایش مشخصات</button><button class="tf-button" data-open-template-stage="${Number(template.id)}">+ مرحله</button>` : ''}${state.capabilities.system_admin ? `<button class="tf-button danger" data-delete-template="${Number(template.id)}">حذف قالب</button>` : ''}</div></header><section class="tf-template-guides"><div class="tf-card-head"><div><h3>فایل‌های راهنمای قالب</h3><p>PDF یا تصویر؛ نسخه فعلی هنگام شروع پروژه برای آن پروژه ثابت می‌شود.</p></div></div><div class="tf-template-guide-list">${(template.attachments || []).map(item => templateGuideCard(item, false, manage)).join('') || '<div class="tf-empty small">هنوز فایل راهنمایی اضافه نشده است.</div>'}</div>${manage ? `<form class="tf-template-guide-upload" data-template-attachment="${Number(template.id)}" enctype="multipart/form-data"><label>فایل راهنما<input type="file" name="attachment" accept="application/pdf,image/jpeg,image/png,image/webp" required></label><label>عنوان نمایشی<input name="title" maxlength="190" placeholder="مثلاً دستورالعمل کنترل کیفیت"></label><button class="tf-button tiny">افزودن فایل</button><small>حداکثر ۲۵ مگابایت؛ PDF، JPG، PNG یا WEBP</small></form>` : ''}</section><div class="tf-template-stages">${(template.steps || []).map((step, index) => `<article class="${Number(step.is_active) ? '' : 'is-disabled'}"><span>${(index + 1).toLocaleString('fa-IR')}</span><div><h3>${esc(step.name)} ${Number(step.is_active) ? '' : '· غیرفعال'}</h3><p>${esc(step.task_type_name)}</p><small>${(step.dependencies || []).length ? `بعد از: ${step.dependencies.map(id => esc(names[Number(id)] || `#${id}`)).join('، ')}` : 'بدون پیش‌نیاز؛ هم‌زمان با شروع پروژه'}</small><small>تیم مسئول: ${esc(assignmentLabel(step))}</small>${manage ? `<div class="tf-stage-actions"><button data-edit-template-stage="${Number(step.id)}">ویرایش</button>${Number(step.is_active) ? `<button class="danger-text" data-disable-template-stage="${Number(step.id)}">غیرفعال‌کردن</button>` : ''}<button class="danger-text" data-delete-template-stage="${Number(step.id)}">حذف از قالب</button></div>` : ''}</div></article>`).join('') || '<div class="tf-empty"><strong>قالب هنوز مرحله‌ای ندارد</strong><p>اولین مرحله را اضافه کن.</p></div>'}</div>`;
     }
 
     async function selectTemplate(templateId, { force = false } = {}) {
@@ -708,7 +725,12 @@
 
     function prepareStage(template, step = null) {
         const form = root.querySelector('[data-save-stage]'); resetModalForm(form); fillOptions(form);
-        form.elements.team_ids.closest('label').hidden = false; form.elements.role_ids.closest('label').hidden = false;
+        root.querySelector('[data-template-targets]').hidden = false;
+        root.querySelector('[data-project-targets]').hidden = true;
+        form.elements.team_id.disabled = false;
+        form.elements.team_id.required = true;
+        form.elements.user_ids.disabled = true;
+        form.elements.user_ids.required = false;
         root.querySelector('[data-stage-active-row]').hidden = false;
         form.dataset.mode = step ? 'template-edit' : 'template-create';
         form.elements.template_id.value = template.id;
@@ -716,7 +738,7 @@
         root.querySelector('[data-stage-modal-title]').textContent = step ? 'ویرایش مرحله قالب' : 'افزودن مرحله به قالب';
         root.querySelector('[data-stage-template-name]').textContent = template.name;
         root.querySelector('[data-stage-dependencies]').innerHTML = (template.steps || []).filter(item => Number(item.id) !== Number(step?.id) && Number(item.is_active)).map(item => `<option value="${Number(item.id)}">${esc(item.name)}</option>`).join('');
-        if (step) setForm(form, { ...step, step_id: step.id, dependency_ids: step.dependencies });
+        if (step) setForm(form, { ...step, step_id: step.id, dependency_ids: step.dependencies, team_id: numericIds(step.team_ids)[0] || '' });
         openModal('stage');
     }
 
@@ -841,12 +863,17 @@
         if (addProjectStage) {
             const form = root.querySelector('[data-save-stage]'); resetModalForm(form); fillOptions(form);
             form.dataset.mode = 'project-create'; form.elements.template_id.value = addProjectStage.dataset.openProjectStage;
+            root.querySelector('[data-template-targets]').hidden = true;
+            root.querySelector('[data-project-targets]').hidden = false;
+            form.elements.team_id.disabled = true;
+            form.elements.team_id.required = false;
+            form.elements.user_ids.disabled = false;
+            form.elements.user_ids.required = true;
             root.querySelector('[data-stage-modal-title]').textContent = 'افزودن مرحله به پروژه';
             root.querySelector('[data-stage-template-name]').textContent = state.selectedProject.title;
             root.querySelector('[data-stage-dependencies]').innerHTML = (state.selectedProject.steps || []).filter(step => step.status !== 'disabled').map(step => `<option value="${Number(step.id)}">${esc(step.name)}</option>`).join('');
             const userSelect = form.elements.user_ids;
             userSelect.innerHTML = (state.selectedProject.members || []).map(user => `<option value="${Number(user.id)}">${esc(user.name)}</option>`).join('');
-            form.elements.team_ids.closest('label').hidden = true; form.elements.role_ids.closest('label').hidden = true;
             root.querySelector('[data-stage-active-row]').hidden = true;
             openModal('stage'); return;
         }
@@ -861,7 +888,7 @@
             openModal('project-dependencies'); return;
         }
 
-        const action = event.target.closest('[data-task-start],[data-task-report],[data-task-complete],[data-task-archive],[data-task-restore],[data-cancel-task],[data-delete-task],[data-project-activate],[data-project-archive],[data-project-restore],[data-remove-project-member],[data-disable-project-stage],[data-disable-template-stage],[data-delete-template-stage],[data-remove-team-member],[data-toggle-team-lead],[data-delete-project],[data-delete-template],[data-delete-task-type],[data-delete-customer],[data-delete-role],[data-read-notifications],[data-refresh]');
+        const action = event.target.closest('[data-task-start],[data-task-report],[data-task-complete],[data-task-archive],[data-task-restore],[data-cancel-task],[data-delete-task],[data-project-activate],[data-project-archive],[data-project-restore],[data-remove-project-member],[data-disable-project-stage],[data-disable-template-stage],[data-delete-template-stage],[data-move-template-attachment],[data-delete-template-attachment],[data-remove-team-member],[data-toggle-team-lead],[data-delete-project],[data-delete-template],[data-delete-task-type],[data-delete-customer],[data-delete-role],[data-read-notifications],[data-refresh]');
         if (!action) return;
         action.disabled = true;
         try {
@@ -956,6 +983,15 @@
                 await api(`template-steps/${action.dataset.deleteTemplateStage}/delete`, { method: 'POST' });
                 await Promise.all([loadTemplates(), loadReference()]);
             }
+            else if (action.dataset.moveTemplateAttachment) {
+                await api(`template-attachments/${action.dataset.moveTemplateAttachment}/move`, { method: 'POST', body: { direction: action.dataset.direction } });
+                await loadTemplates();
+            }
+            else if (action.dataset.deleteTemplateAttachment) {
+                if (!await window.AppModal.confirm('این فایل فقط از نسخه فعلی قالب حذف می‌شود و نسخه ثبت‌شده در پروژه‌های قبلی باقی می‌ماند.', { title: 'حذف فایل راهنما', confirmText: 'حذف فایل', tone: 'danger' })) return;
+                await api(`template-attachments/${action.dataset.deleteTemplateAttachment}/delete`, { method: 'POST' });
+                await loadTemplates();
+            }
             else if (action.dataset.removeTeamMember) {
                 if (!await window.AppModal.confirm('عضویت کاربر از این تیم حذف می‌شود؛ مسئولیت تسک‌های قبلی او تغییر نمی‌کند.', { title: 'حذف عضو تیم', confirmText: 'حذف عضویت', tone: 'danger' })) return;
                 const teamId = Number(action.dataset.removeTeamMember);
@@ -1047,6 +1083,7 @@
             else if (form.matches('[data-edit-task]')) { const data = values(form); const id = data.task_id; delete data.task_id; await api(`tasks/${id}`, { method: 'POST', body: data }); await loadTasks(); await showTask(id); }
             else if (form.matches('[data-task-assignees]')) { const data = values(form); const id = data.task_id; delete data.task_id; await api(`tasks/${id}/assignees`, { method: 'POST', body: data }); await Promise.all([loadTasks(), loadNotifications()]); await showTask(id); }
             else if (form.matches('[data-save-template]')) { const data = values(form); const id = data.template_id; delete data.template_id; const result = await api(id ? `templates/${id}` : 'templates', { method: 'POST', body: data }); closeModal(form); await Promise.all([loadTemplates(), loadReference()]); if (!id && result.id) await selectTemplate(result.id); }
+            else if (form.matches('[data-template-attachment]')) { await api(`templates/${form.dataset.templateAttachment}/attachments`, { method: 'POST', body: new FormData(form) }); form.reset(); await loadTemplates(); }
             else if (form.matches('[data-save-stage]')) { const data = values(form); const containerId = data.template_id; const stepId = data.step_id; delete data.template_id; delete data.step_id; const path = form.dataset.mode === 'project-create' ? `projects/${containerId}/stages` : (form.dataset.mode === 'template-edit' ? `template-steps/${stepId}` : `templates/${containerId}/steps`); await api(path, { method: 'POST', body: data }); closeModal(form); if (form.dataset.mode === 'project-create') { await Promise.all([loadProjects(), loadTasks()]); await showProject(containerId); } else await Promise.all([loadTemplates(), loadReference()]); }
             else if (form.matches('[data-save-project-dependencies]')) { const data = values(form); const id = data.step_id; delete data.step_id; await api(`order-steps/${id}/dependencies`, { method: 'POST', body: data }); closeModal(form); await showProject(state.selectedProject.id); }
             else if (form.matches('[data-save-task-type]')) { const data = values(form); const id = data.task_type_id; delete data.task_type_id; await api(id ? `task-types/${id}` : 'task-types', { method: 'POST', body: data }); closeModal(form); await loadReference(); }

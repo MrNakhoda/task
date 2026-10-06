@@ -133,7 +133,7 @@ $test('archive, member access, user and role safeguards are wired end to end', s
     $assert(str_contains($repository, 'task_can_work'));
     $assert(is_string($engine) && str_contains($engine, 'assertTaskWritable'));
     $assert(is_string($view) && str_contains($view, 'data-view="archives"'));
-    $assert(str_contains($view, 'name="role_ids" data-options="roles" multiple'));
+    $assert(str_contains($view, 'name="team_id" data-options="teams" required'));
     $assert(is_string($javascript) && str_contains($javascript, 'stageTaskActions(stage, archived)'));
     $assert(str_contains($javascript, "api('projects?archived=only')"));
     $assert(str_contains($view, 'data-user-edit-form'), 'User edit form needs a selector distinct from management buttons.');
@@ -367,6 +367,41 @@ $test('standalone task creation permissions are separated and enforced end to en
     $assert(str_contains($javascript, 'data-cancel-task') && str_contains($javascript, '/cancel`'));
     $assert(str_contains($javascript, 'واگذارشده توسط من'));
     $assert(is_string($guide) && str_contains($guide, '`tasks.create.self`') && str_contains($guide, '`tasks.create.assign`'));
+});
+
+$test('template guides and team-owned stages are safe and project-stable', static function () use ($assert): void {
+    $migration = file_get_contents(APP_ROOT . '/database/modules/workflow/007_template_guides_and_stage_defaults.sql');
+    $module = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowModule.php');
+    $repository = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowRepository.php');
+    $engine = file_get_contents(APP_ROOT . '/src/Modules/Workflow/WorkflowEngine.php');
+    $upload = file_get_contents(APP_ROOT . '/src/Media/UploadService.php');
+    $response = file_get_contents(APP_ROOT . '/src/Http/Response.php');
+    $view = file_get_contents(APP_ROOT . '/views/workspace.php');
+    $javascript = file_get_contents(APP_ROOT . '/public/assets/workflow.js');
+    $assert(is_string($migration));
+    foreach (['workflow_template_attachments', 'order_template_attachments', 'source_template_attachment_id', 'captured_at'] as $column) {
+        $assert(str_contains($migration, $column), 'Missing template guide schema: ' . $column);
+    }
+    foreach (['/templates/{id}/attachments', '/template-attachments/{id}/file', '/project-template-attachments/{id}/file', '/template-attachments/{id}/move', '/template-attachments/{id}/delete'] as $route) {
+        $assert(is_string($module) && str_contains($module, $route), 'Missing template guide route: ' . $route);
+    }
+    $assert(str_contains($module, "\$permission('templates.manage')"));
+    $assert(is_string($repository) && str_contains($repository, 'snapshotTemplateAttachments'));
+    $assert(str_contains($repository, 'COALESCE(MAX(position),0)+10'), 'Template step order must be assigned automatically.');
+    $assert(str_contains($repository, '$position, 1]);'), 'New template steps must use equal automatic weight.');
+    $assert(str_contains($repository, "\$data['team_id']"), 'A responsible team is required server-side.');
+    $assert(is_string($engine) && str_contains($engine, 'هیچ عضو فعال پروژه در تیم مسئول'));
+    $assert(str_contains($engine, 'snapshotTemplateAttachments'));
+    $assert(!str_contains($engine, '$defaultIds === [] ? $memberIds'), 'Activation must never fall back to assigning every project member.');
+    $assert(is_string($upload) && str_contains($upload, "'application/pdf' => 'pdf'"));
+    $assert(str_contains($upload, "APP_ROOT . '/storage/'"), 'Template guides must stay outside the public web root.');
+    $assert(is_string($response) && str_contains($response, "'Cache-Control' => 'private, no-store, max-age=0'"));
+    $assert(is_string($view) && str_contains($view, 'data-project-targets'));
+    $assert(!str_contains($view, 'name="progress_weight"') && !str_contains($view, 'name="position"'), 'Internal ordering and weight must not be editable in the UI.');
+    $assert(!str_contains($view, 'name="team_ids"') && !str_contains($view, 'name="role_ids"'), 'Template stages must no longer expose multiple teams, users or authorization roles.');
+    $assert(is_string($javascript) && str_contains($javascript, 'data-template-attachment'));
+    $assert(str_contains($javascript, 'project-template-attachments'));
+    $assert(str_contains($javascript, 'نسخه ثابت فایل‌های راهنمای قالب'));
 });
 
 $test('dangerous test-data wipe is absent from production workspace', static function () use ($assert): void {
