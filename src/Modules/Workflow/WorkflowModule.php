@@ -103,6 +103,12 @@ final class WorkflowModule implements Module
                 ? $next($request)
                 : Response::json(['ok' => false, 'error' => 'این عملیات فقط برای ادمین اصلی مجاز است.'], 403);
         };
+        $privateFile = static function (?array $file): Response {
+            if ($file === null || (string) ($file['disk_name'] ?? '') !== 'private') return Response::json(['ok' => false, 'error' => 'فایل پیدا نشد.'], 404);
+            $relative = (string) ($file['path'] ?? '');
+            if (!str_starts_with($relative, 'uploads/') || str_contains($relative, '..')) return Response::json(['ok' => false, 'error' => 'مسیر فایل معتبر نیست.'], 404);
+            return Response::file(APP_ROOT . '/storage/' . $relative, (string) ($file['mime_type'] ?? 'application/octet-stream'), basename((string) ($file['original_name'] ?? 'attachment')));
+        };
 
         $router->get('/api/v1/workflow/overview', $endpoint(static fn () => ['overview' => $repository->overview($actor(), $mayManageProjects($actor()), $mayManageTasks($actor()), $mayReadProjects($actor()), $mayAssignStandaloneTasks($actor()))]), [$authenticated]);
         $router->get('/api/v1/workflow/reference', $endpoint(static function () use ($repository, $actor, $allows, $mayManageProjects, $mayManageTasks, $mayWorkTasks, $mayCreateStandaloneTasks, $mayAssignStandaloneTasks, $mayReadProjects, $isSystemAdmin): array {
@@ -141,6 +147,13 @@ final class WorkflowModule implements Module
             if ($template === null) throw new RuntimeException('قالب گردش‌کار پیدا نشد.');
             return ['template' => $template];
         }), [$authenticated, $permission('templates.manage')]);
+        $router->get('/api/v1/workflow/template-attachments/{id}/file', static function (Request $request, array $params) use ($repository, $privateFile): Response {
+            return $privateFile($repository->templateAttachmentFile((int) ($params['id'] ?? 0)));
+        }, [$authenticated, $permission('templates.manage')]);
+        $router->get('/api/v1/workflow/project-template-attachments/{id}/file', static function (Request $request, array $params) use ($repository, $privateFile, $actor, $mayManageProjects): Response {
+            $userId = $actor();
+            return $privateFile($repository->projectTemplateAttachmentFile((int) ($params['id'] ?? 0), $userId, $mayManageProjects($userId)));
+        }, [$authenticated]);
         $router->get('/api/v1/workflow/orders', $endpoint(static fn (Request $request) => ['orders' => $repository->orders([
             'status' => $request->query('status', ''),
             'priority_id' => $request->query('priority_id', ''),
@@ -190,6 +203,26 @@ final class WorkflowModule implements Module
         $router->post('/api/v1/workflow/templates', $endpoint(static fn (Request $request) => ['id' => $repository->createTemplate((string) $request->input('name', ''), $request->input('description'), $actor())], 201), [$authenticated, $csrf, $permission('templates.manage')]);
         $router->post('/api/v1/workflow/templates/{id}', $endpoint(static function (Request $request, array $params) use ($repository): array {
             $repository->updateTemplate((int) ($params['id'] ?? 0), $request->all());
+            return [];
+        }), [$authenticated, $csrf, $permission('templates.manage')]);
+        $router->post('/api/v1/workflow/templates/{id}/attachments', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $file = $request->file('attachment');
+            if ($file === null) throw new RuntimeException('فایل انتخاب نشده است.');
+            $upload = new UploadService();
+            $stored = $upload->storePrivateAttachment($file, 'workflow-templates');
+            try {
+                return ['id' => $repository->addTemplateAttachment((int) ($params['id'] ?? 0), $actor(), $stored, (string) ($file['name'] ?? ''), $request->input('title'))];
+            } catch (\Throwable $exception) {
+                $upload->deletePrivate((string) $stored['path']);
+                throw $exception;
+            }
+        }, 201), [$authenticated, $csrf, $permission('templates.manage')]);
+        $router->post('/api/v1/workflow/template-attachments/{id}/move', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->moveTemplateAttachment((int) ($params['id'] ?? 0), $actor(), (string) $request->input('direction', ''));
+            return [];
+        }), [$authenticated, $csrf, $permission('templates.manage')]);
+        $router->post('/api/v1/workflow/template-attachments/{id}/delete', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->deleteTemplateAttachment((int) ($params['id'] ?? 0), $actor());
             return [];
         }), [$authenticated, $csrf, $permission('templates.manage')]);
         $router->post('/api/v1/workflow/templates/{id}/steps', $endpoint(static fn (Request $request, array $params) => ['id' => $repository->addTemplateStep((int) ($params['id'] ?? 0), $request->all())], 201), [$authenticated, $csrf, $permission('templates.manage')]);

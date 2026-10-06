@@ -50,11 +50,15 @@ final class WorkflowEngine
             $insert = $pdo->prepare("INSERT INTO {$steps} (order_id,source_template_step_id,task_type_id,name,description,position,progress_weight) VALUES (?,?,?,?,?,?,?)");
             $stepMap = [];
             foreach ($templateSteps as $templateStep) {
+                $resolvedAssignees = $this->resolveTemplateAssignees((int) $templateStep['id'], $order['project_id'] !== null ? (int) $order['project_id'] : null);
+                if ($resolvedAssignees === []) {
+                    throw new RuntimeException('برای مرحله «' . (string) $templateStep['name'] . '» هیچ عضو فعال پروژه در تیم مسئول انتخاب‌شده وجود ندارد.');
+                }
                 $insert->execute([$orderId, $templateStep['id'], $templateStep['task_type_id'], $templateStep['name'], $templateStep['description'], $templateStep['position'], $templateStep['progress_weight']]);
                 $stepId = (int) $pdo->lastInsertId();
                 $stepMap[(int) $templateStep['id']] = $stepId;
                 $candidateInsert = $pdo->prepare("INSERT IGNORE INTO {$candidates} (step_id,user_id) VALUES (?,?)");
-                foreach ($this->resolveTemplateAssignees((int) $templateStep['id'], $order['project_id'] !== null ? (int) $order['project_id'] : null) as $userId) {
+                foreach ($resolvedAssignees as $userId) {
                     $candidateInsert->execute([$stepId, $userId]);
                 }
             }
@@ -70,8 +74,10 @@ final class WorkflowEngine
                 }
             }
 
+            $guideCount = $this->repository->snapshotTemplateAttachments((int) $order['workflow_template_id'], $orderId);
+
             $pdo->prepare("UPDATE {$orders} SET status='active',activated_at=NOW() WHERE id=?")->execute([$orderId]);
-            $this->repository->history($orderId, null, $actorId, 'order.activated', 'سفارش فعال و گردش کار ساخته شد.');
+            $this->repository->history($orderId, null, $actorId, 'order.activated', 'سفارش فعال و گردش کار ساخته شد.', ['template_attachment_count' => $guideCount]);
             $this->activateReadySteps($orderId, $actorId);
             $this->updateProgress($orderId, $actorId);
             $pdo->commit();
@@ -385,10 +391,7 @@ final class WorkflowEngine
         $statement = Connection::get()->prepare("SELECT pm.user_id FROM {$members} pm JOIN {$users} u ON u.id=pm.user_id WHERE pm.project_id=? AND u.status='active' AND u.deleted_at IS NULL");
         $statement->execute([$projectId]);
         $memberIds = array_values(array_unique(array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN))));
-        if ($defaultIds === []) return $memberIds;
-
-        $matched = array_values(array_intersect($defaultIds, $memberIds));
-        return $matched !== [] ? $matched : $memberIds;
+        return array_values(array_intersect($defaultIds, $memberIds));
     }
 
     private function assertEligibleAssignees(array $task, array $userIds): void

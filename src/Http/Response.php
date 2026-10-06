@@ -13,6 +13,7 @@ final class Response
         private readonly string $body = '',
         private readonly int $status = 200,
         private readonly array $headers = [],
+        private readonly ?string $filePath = null,
     ) {
     }
 
@@ -40,13 +41,36 @@ final class Response
         return new self('', 204);
     }
 
+    public static function file(string $path, string $mimeType, string $filename, bool $inline = true): self
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return self::json(['ok' => false, 'error' => 'فایل پیدا نشد.'], 404);
+        }
+        $safeName = str_replace(["\r", "\n", '"'], '', $filename);
+        return new self('', 200, [
+            'Content-Type' => $mimeType,
+            'Content-Length' => (string) filesize($path),
+            'Content-Disposition' => ($inline ? 'inline' : 'attachment') . '; filename="' . $safeName . '"; filename*=UTF-8\'\'' . rawurlencode($safeName),
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ], $path);
+    }
+
     public function send(): never
     {
         http_response_code($this->status);
         foreach ($this->headers as $name => $value) {
             header($name . ': ' . $value);
         }
-        echo $this->body;
+        if ($this->filePath !== null) {
+            $handle = fopen($this->filePath, 'rb');
+            if ($handle !== false) {
+                fpassthru($handle);
+                fclose($handle);
+            }
+        } else {
+            echo $this->body;
+        }
         exit;
     }
 

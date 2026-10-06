@@ -499,6 +499,23 @@ button.tf-row:hover { background: #fafbfe; }
 .tf-template-stages h3, .tf-template-stages p { margin: 0; }
 .tf-template-stages h3 { font-size: 12px; }
 .tf-template-stages p, .tf-template-stages small { display: block; color: #828da0; font-size: 10px; }
+.tf-template-guides { margin-top: 18px; padding: 16px; border: 1px solid #e6eaf1; border-radius: 14px; background: #fbfcff; }
+.tf-template-guides .tf-card-head { min-height: 0; padding: 0 0 13px; border: 0; }
+.tf-template-guides .tf-card-head h3 { margin: 0; color: #26344f; font-size: 13px; }
+.tf-template-guides .tf-card-head p { margin: 3px 0 0; color: #7f899b; font-size: 10px; }
+.tf-template-guide-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.tf-guide-file { min-width: 0; overflow: hidden; border: 1px solid #e2e7f0; border-radius: 12px; background: #fff; }
+.tf-guide-file > a { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 72px; padding: 8px; color: inherit; text-decoration: none; }
+.tf-guide-file img, .tf-guide-file-icon { display: grid; width: 58px; height: 56px; place-items: center; object-fit: cover; border-radius: 8px; background: #fff0ee; color: #c43d32; font-size: 12px; font-weight: 900; }
+.tf-guide-file strong, .tf-guide-file small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-guide-file strong { color: #26344f; font-size: 11px; }
+.tf-guide-file small { margin-top: 4px; color: #8993a5; font-size: 9px; }
+.tf-guide-file-actions { display: flex; gap: 5px; padding: 0 8px 8px; }
+.tf-guide-file-actions button { min-height: 27px; padding: 3px 8px; border: 1px solid #e2e7f0; border-radius: 7px; background: #fff; color: #687389; font: inherit; font-size: 10px; cursor: pointer; }
+.tf-template-guide-upload { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 9px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed #dce2ec; }
+.tf-template-guide-upload label { display: grid; gap: 5px; color: #59667d; font-size: 10px; }
+.tf-template-guide-upload input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #dce2ec; border-radius: 9px; background: #fff; font: inherit; }
+.tf-template-guide-upload > small { grid-column: 1 / -1; color: #8a94a6; font-size: 9px; }
 .tf-stage-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .tf-stage-actions button, .tf-actions button { padding: 0; background: transparent; color: var(--tf-blue); cursor: pointer; font-size: 9px; font-weight: 900; }
 .tf-stage-actions button.danger-text, .tf-actions button.danger-text, .danger-text { color: #c33a32; }
@@ -1062,4 +1079,6 @@ body:has(.tf-app) { overflow-x: hidden; background: #f4f6fa; }
     .pwa-update-card { right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); left: 12px; justify-content: space-between; }
     .tf-pwa-settings { align-items: stretch; flex-direction: column; }
     .tf-pwa-settings .tf-head-actions { width: 100%; }
+    .tf-template-guide-list, .tf-template-guide-upload { grid-template-columns: 1fr; }
+    .tf-template-guide-upload .tf-button { width: 100%; }
 }

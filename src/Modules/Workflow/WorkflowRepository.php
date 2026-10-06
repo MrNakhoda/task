@@ -130,6 +130,8 @@ final class WorkflowRepository
         $stepUsers = Table::name('workflow_template_step_users');
         $stepTeams = Table::name('workflow_template_step_teams');
         $stepRoles = Table::name('workflow_template_step_roles');
+        $attachments = Table::name('workflow_template_attachments');
+        $files = Table::name('files');
         $pdo = Connection::get();
 
         $query = $pdo->prepare("SELECT wt.*,(SELECT COUNT(*) FROM {$steps} active_step WHERE active_step.workflow_template_id=wt.id AND active_step.is_active=1) step_count FROM {$templates} wt WHERE wt.id=? AND wt.deleted_at IS NULL");
@@ -142,6 +144,9 @@ final class WorkflowRepository
         $stepQuery = $pdo->prepare("SELECT s.*,tt.name task_type_name FROM {$steps} s JOIN {$types} tt ON tt.id=s.task_type_id WHERE s.workflow_template_id=? ORDER BY s.position,s.id");
         $stepQuery->execute([$templateId]);
         $template['steps'] = $stepQuery->fetchAll(PDO::FETCH_ASSOC);
+        $attachmentQuery = $pdo->prepare("SELECT a.id,a.title,a.sort_order,a.created_at,f.original_name,f.mime_type,f.size_bytes FROM {$attachments} a JOIN {$files} f ON f.id=a.file_id WHERE a.workflow_template_id=? AND a.deleted_at IS NULL AND f.deleted_at IS NULL ORDER BY a.sort_order,a.id");
+        $attachmentQuery->execute([$templateId]);
+        $template['attachments'] = $attachmentQuery->fetchAll(PDO::FETCH_ASSOC);
         if ($template['steps'] === []) {
             return $template;
         }
@@ -535,6 +540,7 @@ final class WorkflowRepository
         $orderCustomers = Table::name('order_customers');
         $customers = Table::name('customers');
         $attachments = Table::name('order_attachments');
+        $templateAttachments = Table::name('order_template_attachments');
         $files = Table::name('files');
         $reports = Table::name('task_reports');
         $dependencies = Table::name('order_step_dependencies');
@@ -552,6 +558,9 @@ final class WorkflowRepository
         $q = Connection::get()->prepare("SELECT a.id,a.caption,a.created_at,f.path,f.original_name,f.mime_type,f.size_bytes FROM {$attachments} a JOIN {$files} f ON f.id=a.file_id WHERE a.order_id=? AND f.deleted_at IS NULL ORDER BY a.id DESC");
         $q->execute([$orderId]);
         $order['attachments'] = $q->fetchAll(PDO::FETCH_ASSOC);
+        $q = Connection::get()->prepare("SELECT a.id,a.title,a.sort_order,a.captured_at,f.original_name,f.mime_type,f.size_bytes FROM {$templateAttachments} a JOIN {$files} f ON f.id=a.file_id WHERE a.order_id=? AND f.deleted_at IS NULL ORDER BY a.sort_order,a.id");
+        $q->execute([$orderId]);
+        $order['template_attachments'] = $q->fetchAll(PDO::FETCH_ASSOC);
         $q = Connection::get()->prepare("SELECT r.*,u.name user_name,t.title task_title FROM {$reports} r JOIN {$tasks} t ON t.id=r.task_id JOIN {$users} u ON u.id=r.user_id WHERE t.order_id=? ORDER BY r.created_at DESC,r.id DESC");
         $q->execute([$orderId]);
         $order['reports'] = $q->fetchAll(PDO::FETCH_ASSOC);
@@ -1177,25 +1186,145 @@ final class WorkflowRepository
         }
     }
 
+    public function addTemplateAttachment(int $templateId, int $actorId, array $stored, string $originalName, ?string $title): int
+    {
+        $templates = Table::name('workflow_templates');
+        $attachments = Table::name('workflow_template_attachments');
+        $files = Table::name('files');
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $check = $pdo->prepare("SELECT id FROM {$templates} WHERE id=? AND deleted_at IS NULL FOR UPDATE");
+            $check->execute([$templateId]);
+            if (!$check->fetchColumn()) throw new RuntimeException('قالب پیدا نشد.');
+            $resolvedTitle = trim((string) $title);
+            if ($resolvedTitle === '') $resolvedTitle = pathinfo($originalName, PATHINFO_FILENAME);
+            $resolvedTitle = $this->required($resolvedTitle, 'عنوان فایل');
+            if (mb_strlen($resolvedTitle) > 190) throw new RuntimeException('عنوان فایل بیش از حد طولانی است.');
+            $pdo->prepare("INSERT INTO {$files} (owner_id,disk_name,path,original_name,mime_type,size_bytes) VALUES (?,'private',?,?,?,?)")->execute([$actorId, (string) $stored['path'], $originalName, (string) $stored['mime'], max(0, (int) $stored['size'])]);
+            $fileId = (int) $pdo->lastInsertId();
+            $position = (int) $pdo->query("SELECT COALESCE(MAX(sort_order),0)+10 FROM {$attachments} WHERE workflow_template_id=" . $templateId . ' AND deleted_at IS NULL')->fetchColumn();
+            $pdo->prepare("INSERT INTO {$attachments} (workflow_template_id,file_id,title,sort_order,uploaded_by) VALUES (?,?,?,?,?)")->execute([$templateId, $fileId, $resolvedTitle, $position, $actorId]);
+            $attachmentId = (int) $pdo->lastInsertId();
+            $pdo->prepare("UPDATE {$templates} SET version=version+1 WHERE id=?")->execute([$templateId]);
+            (new AuditLogger())->record($actorId, 'template.attachment_added', 'workflow_template', (string) $templateId, ['attachment_id' => $attachmentId, 'title' => $resolvedTitle]);
+            $pdo->commit();
+            return $attachmentId;
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function moveTemplateAttachment(int $attachmentId, int $actorId, string $direction): void
+    {
+        if (!in_array($direction, ['up', 'down'], true)) throw new RuntimeException('جهت جابه‌جایی معتبر نیست.');
+        $attachments = Table::name('workflow_template_attachments');
+        $templates = Table::name('workflow_templates');
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $query = $pdo->prepare("SELECT workflow_template_id FROM {$attachments} WHERE id=? AND deleted_at IS NULL FOR UPDATE");
+            $query->execute([$attachmentId]);
+            $templateId = (int) ($query->fetchColumn() ?: 0);
+            if ($templateId < 1) throw new RuntimeException('فایل قالب پیدا نشد.');
+            $query = $pdo->prepare("SELECT id FROM {$attachments} WHERE workflow_template_id=? AND deleted_at IS NULL ORDER BY sort_order,id FOR UPDATE");
+            $query->execute([$templateId]);
+            $ids = array_map('intval', $query->fetchAll(PDO::FETCH_COLUMN));
+            $index = array_search($attachmentId, $ids, true);
+            $target = $index === false ? -1 : $index + ($direction === 'up' ? -1 : 1);
+            if ($index !== false && isset($ids[$target])) {
+                [$ids[$index], $ids[$target]] = [$ids[$target], $ids[$index]];
+                $update = $pdo->prepare("UPDATE {$attachments} SET sort_order=? WHERE id=?");
+                foreach ($ids as $position => $id) $update->execute([($position + 1) * 10, $id]);
+                $pdo->prepare("UPDATE {$templates} SET version=version+1 WHERE id=?")->execute([$templateId]);
+                (new AuditLogger())->record($actorId, 'template.attachment_reordered', 'workflow_template', (string) $templateId, ['attachment_id' => $attachmentId, 'direction' => $direction]);
+            }
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function deleteTemplateAttachment(int $attachmentId, int $actorId): void
+    {
+        $attachments = Table::name('workflow_template_attachments');
+        $templates = Table::name('workflow_templates');
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $query = $pdo->prepare("SELECT workflow_template_id,title FROM {$attachments} WHERE id=? AND deleted_at IS NULL FOR UPDATE");
+            $query->execute([$attachmentId]);
+            $attachment = $query->fetch(PDO::FETCH_ASSOC);
+            if (!$attachment) throw new RuntimeException('فایل قالب پیدا نشد.');
+            $pdo->prepare("UPDATE {$attachments} SET deleted_at=NOW() WHERE id=?")->execute([$attachmentId]);
+            $pdo->prepare("UPDATE {$templates} SET version=version+1 WHERE id=?")->execute([(int) $attachment['workflow_template_id']]);
+            (new AuditLogger())->record($actorId, 'template.attachment_deleted', 'workflow_template', (string) $attachment['workflow_template_id'], ['attachment_id' => $attachmentId, 'title' => (string) $attachment['title']]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function snapshotTemplateAttachments(int $templateId, int $orderId): int
+    {
+        $source = Table::name('workflow_template_attachments');
+        $target = Table::name('order_template_attachments');
+        $statement = Connection::get()->prepare("INSERT IGNORE INTO {$target} (order_id,source_template_attachment_id,file_id,title,sort_order) SELECT ?,a.id,a.file_id,a.title,a.sort_order FROM {$source} a WHERE a.workflow_template_id=? AND a.deleted_at IS NULL ORDER BY a.sort_order,a.id");
+        $statement->execute([$orderId, $templateId]);
+        return $statement->rowCount();
+    }
+
+    public function templateAttachmentFile(int $attachmentId): ?array
+    {
+        $attachments = Table::name('workflow_template_attachments');
+        $files = Table::name('files');
+        $statement = Connection::get()->prepare("SELECT f.disk_name,f.path,f.original_name,f.mime_type FROM {$attachments} a JOIN {$files} f ON f.id=a.file_id WHERE a.id=? AND a.deleted_at IS NULL AND f.deleted_at IS NULL");
+        $statement->execute([$attachmentId]);
+        $file = $statement->fetch(PDO::FETCH_ASSOC);
+        return is_array($file) ? $file : null;
+    }
+
+    public function projectTemplateAttachmentFile(int $attachmentId, int $userId, bool $manageAll): ?array
+    {
+        $attachments = Table::name('order_template_attachments');
+        $orders = Table::name('work_orders');
+        $members = Table::name('project_members');
+        $files = Table::name('files');
+        $access = $manageAll ? '' : " AND EXISTS (SELECT 1 FROM {$members} pm WHERE pm.project_id=o.project_id AND pm.user_id=" . (int) $userId . ')';
+        $statement = Connection::get()->prepare("SELECT f.disk_name,f.path,f.original_name,f.mime_type FROM {$attachments} a JOIN {$orders} o ON o.id=a.order_id JOIN {$files} f ON f.id=a.file_id WHERE a.id=? AND o.deleted_at IS NULL AND f.deleted_at IS NULL{$access}");
+        $statement->execute([$attachmentId]);
+        $file = $statement->fetch(PDO::FETCH_ASSOC);
+        return is_array($file) ? $file : null;
+    }
+
     public function addTemplateStep(int $templateId, array $data): int
     {
         $steps = Table::name('workflow_template_steps');
         $deps = Table::name('workflow_template_step_dependencies');
-        $users = Table::name('workflow_template_step_users');
         $teams = Table::name('workflow_template_step_teams');
-        $roles = Table::name('workflow_template_step_roles');
+        $teamTable = Table::name('teams');
+        $templateTable = Table::name('workflow_templates');
         $pdo = Connection::get();
         $pdo->beginTransaction();
         try {
-            $position = max(0, (int) ($data['position'] ?? 0));
-            $weight = max(0.01, (float) ($data['progress_weight'] ?? 1));
+            $lock = $pdo->prepare("SELECT id FROM {$templateTable} WHERE id=? AND deleted_at IS NULL FOR UPDATE");
+            $lock->execute([$templateId]);
+            if (!$lock->fetchColumn()) throw new RuntimeException('قالب پیدا نشد.');
+            $teamId = (int) ($data['team_id'] ?? 0);
+            $teamCheck = $pdo->prepare("SELECT 1 FROM {$teamTable} WHERE id=? AND is_active=1");
+            $teamCheck->execute([$teamId]);
+            if (!$teamCheck->fetchColumn()) throw new RuntimeException('یک تیم فعال برای مسئولیت مرحله انتخاب کنید.');
+            $positionQuery = $pdo->prepare("SELECT COALESCE(MAX(position),0)+10 FROM {$steps} WHERE workflow_template_id=?");
+            $positionQuery->execute([$templateId]);
+            $position = (int) $positionQuery->fetchColumn();
             $statement = $pdo->prepare("INSERT INTO {$steps} (workflow_template_id,task_type_id,name,description,position,progress_weight) VALUES (?,?,?,?,?,?)");
-            $statement->execute([$templateId, (int) ($data['task_type_id'] ?? 0), $this->required((string) ($data['name'] ?? ''), 'نام مرحله'), $data['description'] ?? null, $position, $weight]);
+            $statement->execute([$templateId, (int) ($data['task_type_id'] ?? 0), $this->required((string) ($data['name'] ?? ''), 'نام مرحله'), $data['description'] ?? null, $position, 1]);
             $stepId = (int) $pdo->lastInsertId();
             $this->insertPairs($deps, 'step_id', $stepId, 'depends_on_step_id', $this->ids($data['dependency_ids'] ?? []));
-            $this->insertPairs($users, 'step_id', $stepId, 'user_id', $this->ids($data['user_ids'] ?? []));
-            $this->insertPairs($teams, 'step_id', $stepId, 'team_id', $this->ids($data['team_ids'] ?? []));
-            $this->insertPairs($roles, 'step_id', $stepId, 'role_id', $this->ids($data['role_ids'] ?? []));
+            $this->insertPairs($teams, 'step_id', $stepId, 'team_id', [$teamId]);
             $pdo->prepare("UPDATE " . Table::name('workflow_templates') . " SET version=version+1 WHERE id=?")->execute([$templateId]);
             $pdo->commit();
             return $stepId;
@@ -1209,9 +1338,8 @@ final class WorkflowRepository
     {
         $steps = Table::name('workflow_template_steps');
         $deps = Table::name('workflow_template_step_dependencies');
-        $users = Table::name('workflow_template_step_users');
         $teams = Table::name('workflow_template_step_teams');
-        $roles = Table::name('workflow_template_step_roles');
+        $teamTable = Table::name('teams');
         $pdo = Connection::get();
         $pdo->beginTransaction();
         try {
@@ -1226,12 +1354,14 @@ final class WorkflowRepository
                 $check->execute([$parentId, $templateId]);
                 if (!$check->fetchColumn()) throw new RuntimeException('پیش‌نیاز باید متعلق به همین قالب باشد.');
             }
-            $pdo->prepare("UPDATE {$steps} SET task_type_id=?,name=?,description=?,position=?,progress_weight=?,is_active=? WHERE id=?")->execute([(int) ($data['task_type_id'] ?? 0), $this->required((string) ($data['name'] ?? ''), 'نام مرحله'), $data['description'] ?? null, max(0, (int) ($data['position'] ?? 0)), max(.01, (float) ($data['progress_weight'] ?? 1)), (bool) ($data['is_active'] ?? true) ? 1 : 0, $stepId]);
-            foreach ([$deps, $users, $teams, $roles] as $table) $pdo->prepare("DELETE FROM {$table} WHERE step_id=?")->execute([$stepId]);
+            $teamId = (int) ($data['team_id'] ?? 0);
+            $teamCheck = $pdo->prepare("SELECT 1 FROM {$teamTable} WHERE id=? AND is_active=1");
+            $teamCheck->execute([$teamId]);
+            if (!$teamCheck->fetchColumn()) throw new RuntimeException('یک تیم فعال برای مسئولیت مرحله انتخاب کنید.');
+            $pdo->prepare("UPDATE {$steps} SET task_type_id=?,name=?,description=?,is_active=? WHERE id=?")->execute([(int) ($data['task_type_id'] ?? 0), $this->required((string) ($data['name'] ?? ''), 'نام مرحله'), $data['description'] ?? null, (bool) ($data['is_active'] ?? true) ? 1 : 0, $stepId]);
+            foreach ([$deps, $teams] as $table) $pdo->prepare("DELETE FROM {$table} WHERE step_id=?")->execute([$stepId]);
             $this->insertPairs($deps, 'step_id', $stepId, 'depends_on_step_id', $dependencyIds);
-            $this->insertPairs($users, 'step_id', $stepId, 'user_id', $this->ids($data['user_ids'] ?? []));
-            $this->insertPairs($teams, 'step_id', $stepId, 'team_id', $this->ids($data['team_ids'] ?? []));
-            $this->insertPairs($roles, 'step_id', $stepId, 'role_id', $this->ids($data['role_ids'] ?? []));
+            $this->insertPairs($teams, 'step_id', $stepId, 'team_id', [$teamId]);
             $pdo->prepare("UPDATE " . Table::name('workflow_templates') . " SET version=version+1 WHERE id=?")->execute([$templateId]);
             $pdo->commit();
         } catch (\Throwable $exception) {
