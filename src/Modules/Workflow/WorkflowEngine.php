@@ -40,59 +40,79 @@ final class WorkflowEngine
                 throw new RuntimeException('فقط سفارش پیش‌نویس قابل فعال‌سازی است.');
             }
 
-            $query = $pdo->prepare("SELECT * FROM {$templates} WHERE workflow_template_id=? AND is_active=1 ORDER BY position,id");
-            $query->execute([(int) $order['workflow_template_id']]);
-            $templateSteps = $query->fetchAll(PDO::FETCH_ASSOC);
-            if ($templateSteps === []) {
-                throw new RuntimeException('قالب انتخاب‌شده هیچ مرحله فعالی ندارد.');
-            }
-
-            $automaticMemberIds = [];
-            $automaticAssigneesByStep = [];
-            foreach ($templateSteps as $templateStep) {
-                $stepAssignees = $this->resolveTemplateAssignees((int) $templateStep['id'], null);
-                if ($stepAssignees === []) {
-                    throw new RuntimeException('برای مرحله «' . (string) $templateStep['name'] . '» تیم مسئول هیچ عضو فعالی ندارد.');
-                }
-                $automaticAssigneesByStep[(int) $templateStep['id']] = $stepAssignees;
-                array_push($automaticMemberIds, ...$stepAssignees);
-            }
-            $automaticMemberIds = array_values(array_unique(array_map('intval', $automaticMemberIds)));
+            $savedQuery = $pdo->prepare("SELECT * FROM {$steps} WHERE order_id=? ORDER BY position,id FOR UPDATE");
+            $savedQuery->execute([$orderId]);
+            $savedSteps = $savedQuery->fetchAll(PDO::FETCH_ASSOC);
             $automaticMemberCount = 0;
-            if ($order['project_id'] !== null) {
-                $projectMembers = Table::name('project_members');
-                $memberInsert = $pdo->prepare("INSERT IGNORE INTO {$projectMembers} (project_id,user_id,role_label) VALUES (?,?,'عضو خودکار از تیم قالب')");
-                foreach ($automaticMemberIds as $userId) {
-                    $memberInsert->execute([(int) $order['project_id'], $userId]);
-                    $automaticMemberCount += $memberInsert->rowCount();
+            $guideCount = 0;
+            if ($savedSteps !== []) {
+                $users = Table::name('users');
+                $members = Table::name('project_members');
+                $pdo->prepare("DELETE c FROM {$candidates} c JOIN {$steps} s ON s.id=c.step_id JOIN {$users} u ON u.id=c.user_id WHERE s.order_id=? AND u.status<>'active'")->execute([$orderId]);
+                $count = $pdo->prepare("SELECT COUNT(*) FROM {$candidates} WHERE step_id=?");
+                foreach ($savedSteps as $step) {
+                    if ($step['status'] === 'disabled') continue;
+                    $count->execute([$step['id']]);
+                    if ((int) $count->fetchColumn() === 0) throw new RuntimeException('برای مرحله «' . $step['name'] . '» مسئول فعال تعیین کنید.');
                 }
-            }
-
-            $insert = $pdo->prepare("INSERT INTO {$steps} (order_id,source_template_step_id,task_type_id,name,description,position,progress_weight) VALUES (?,?,?,?,?,?,?)");
-            $stepMap = [];
-            foreach ($templateSteps as $templateStep) {
-                $resolvedAssignees = $automaticAssigneesByStep[(int) $templateStep['id']];
-                $insert->execute([$orderId, $templateStep['id'], $templateStep['task_type_id'], $templateStep['name'], $templateStep['description'], $templateStep['position'], $templateStep['progress_weight']]);
-                $stepId = (int) $pdo->lastInsertId();
-                $stepMap[(int) $templateStep['id']] = $stepId;
-                $candidateInsert = $pdo->prepare("INSERT IGNORE INTO {$candidates} (step_id,user_id) VALUES (?,?)");
-                foreach ($resolvedAssignees as $userId) {
-                    $candidateInsert->execute([$stepId, $userId]);
+                $pdo->prepare("INSERT IGNORE INTO {$members} (project_id,user_id,role_label) SELECT ?,c.user_id,'عضو مرحله کپی‌شده' FROM {$candidates} c JOIN {$steps} s ON s.id=c.step_id WHERE s.order_id=?")->execute([$order['project_id'], $orderId]);
+                $this->assertAcyclic($orderId);
+            } else {
+                $query = $pdo->prepare("SELECT * FROM {$templates} WHERE workflow_template_id=? AND is_active=1 ORDER BY position,id");
+                $query->execute([(int) $order['workflow_template_id']]);
+                $templateSteps = $query->fetchAll(PDO::FETCH_ASSOC);
+                if ($templateSteps === []) {
+                    throw new RuntimeException('قالب انتخاب‌شده هیچ مرحله فعالی ندارد.');
                 }
-            }
 
-            $dependencyQuery = $pdo->prepare("SELECT step_id,depends_on_step_id FROM {$templateDependencies} WHERE step_id IN (" . implode(',', array_fill(0, count($stepMap), '?')) . ')');
-            $dependencyQuery->execute(array_keys($stepMap));
-            $dependencyInsert = $pdo->prepare("INSERT IGNORE INTO {$dependencies} (step_id,depends_on_step_id) VALUES (?,?)");
-            foreach ($dependencyQuery->fetchAll(PDO::FETCH_ASSOC) as $dependency) {
-                $child = $stepMap[(int) $dependency['step_id']] ?? null;
-                $parent = $stepMap[(int) $dependency['depends_on_step_id']] ?? null;
-                if ($child !== null && $parent !== null) {
-                    $dependencyInsert->execute([$child, $parent]);
+                $automaticMemberIds = [];
+                $automaticAssigneesByStep = [];
+                foreach ($templateSteps as $templateStep) {
+                    $stepAssignees = $this->resolveTemplateAssignees((int) $templateStep['id'], null);
+                    if ($stepAssignees === []) {
+                        throw new RuntimeException('برای مرحله «' . (string) $templateStep['name'] . '» تیم مسئول هیچ عضو فعالی ندارد.');
+                    }
+                    $automaticAssigneesByStep[(int) $templateStep['id']] = $stepAssignees;
+                    array_push($automaticMemberIds, ...$stepAssignees);
                 }
-            }
+                $automaticMemberIds = array_values(array_unique(array_map('intval', $automaticMemberIds)));
+                $automaticMemberCount = 0;
+                if ($order['project_id'] !== null) {
+                    $projectMembers = Table::name('project_members');
+                    $memberInsert = $pdo->prepare("INSERT IGNORE INTO {$projectMembers} (project_id,user_id,role_label) VALUES (?,?,'عضو خودکار از تیم قالب')");
+                    foreach ($automaticMemberIds as $userId) {
+                        $memberInsert->execute([(int) $order['project_id'], $userId]);
+                        $automaticMemberCount += $memberInsert->rowCount();
+                    }
+                }
 
-            $guideCount = $this->repository->snapshotTemplateAttachments((int) $order['workflow_template_id'], $orderId);
+                $insert = $pdo->prepare("INSERT INTO {$steps} (order_id,source_template_step_id,task_type_id,name,description,position,progress_weight) VALUES (?,?,?,?,?,?,?)");
+                $stepMap = [];
+                foreach ($templateSteps as $templateStep) {
+                    $resolvedAssignees = $automaticAssigneesByStep[(int) $templateStep['id']];
+                    $insert->execute([$orderId, $templateStep['id'], $templateStep['task_type_id'], $templateStep['name'], $templateStep['description'], $templateStep['position'], $templateStep['progress_weight']]);
+                    $stepId = (int) $pdo->lastInsertId();
+                    $stepMap[(int) $templateStep['id']] = $stepId;
+                    $candidateInsert = $pdo->prepare("INSERT IGNORE INTO {$candidates} (step_id,user_id) VALUES (?,?)");
+                    foreach ($resolvedAssignees as $userId) {
+                        $candidateInsert->execute([$stepId, $userId]);
+                    }
+                }
+
+                $dependencyQuery = $pdo->prepare("SELECT step_id,depends_on_step_id FROM {$templateDependencies} WHERE step_id IN (" . implode(',', array_fill(0, count($stepMap), '?')) . ')');
+                $dependencyQuery->execute(array_keys($stepMap));
+                $dependencyInsert = $pdo->prepare("INSERT IGNORE INTO {$dependencies} (step_id,depends_on_step_id) VALUES (?,?)");
+                foreach ($dependencyQuery->fetchAll(PDO::FETCH_ASSOC) as $dependency) {
+                    $child = $stepMap[(int) $dependency['step_id']] ?? null;
+                    $parent = $stepMap[(int) $dependency['depends_on_step_id']] ?? null;
+                    if ($child !== null && $parent !== null) {
+                        $dependencyInsert->execute([$child, $parent]);
+                    }
+                }
+
+                $guideCount = $this->repository->snapshotTemplateAttachments((int) $order['workflow_template_id'], $orderId);
+
+            }
 
             $pdo->prepare("UPDATE {$orders} SET status='active',activated_at=NOW() WHERE id=?")->execute([$orderId]);
             $this->repository->history($orderId, null, $actorId, 'order.activated', 'سفارش فعال و گردش کار ساخته شد.', ['template_attachment_count' => $guideCount, 'automatic_project_member_count' => $automaticMemberCount]);
@@ -293,7 +313,7 @@ final class WorkflowEngine
             $steps = Table::name('order_workflow_steps');
             $tasks = Table::name('tasks');
             $orders = Table::name('work_orders');
-            $query = $pdo->prepare("SELECT s.* FROM {$steps} s JOIN {$orders} o ON o.id=s.order_id WHERE s.id=? AND o.deleted_at IS NULL AND o.archived_at IS NULL FOR UPDATE");
+            $query = $pdo->prepare("SELECT s.*,o.status order_status FROM {$steps} s JOIN {$orders} o ON o.id=s.order_id WHERE s.id=? AND o.deleted_at IS NULL AND o.archived_at IS NULL FOR UPDATE");
             $query->execute([$stepId]);
             $step = $query->fetch(PDO::FETCH_ASSOC);
             if (!$step) throw new RuntimeException('مرحله پیدا نشد.');
@@ -302,8 +322,10 @@ final class WorkflowEngine
             $pdo->prepare("UPDATE {$tasks} SET status='cancelled' WHERE order_step_id=? AND status IN ('open','in_progress')")->execute([$stepId]);
             $orderId = (int) $step['order_id'];
             $this->repository->history($orderId, null, $actorId, 'step.disabled', 'مرحله غیرفعال شد و سابقه آن باقی ماند.', ['step_id' => $stepId]);
-            $this->activateReadySteps($orderId, $actorId);
-            $this->updateProgress($orderId, $actorId);
+            if ($step['order_status'] === 'active') {
+                $this->activateReadySteps($orderId, $actorId);
+                $this->updateProgress($orderId, $actorId);
+            }
             $pdo->commit();
         } catch (\Throwable $exception) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -318,14 +340,15 @@ final class WorkflowEngine
         try {
             $steps = Table::name('order_workflow_steps');
             $orders = Table::name('work_orders');
-            $query = $pdo->prepare("SELECT s.order_id FROM {$steps} s JOIN {$orders} o ON o.id=s.order_id WHERE s.id=? AND o.deleted_at IS NULL AND o.archived_at IS NULL FOR UPDATE");
+            $query = $pdo->prepare("SELECT s.order_id,o.status order_status FROM {$steps} s JOIN {$orders} o ON o.id=s.order_id WHERE s.id=? AND o.deleted_at IS NULL AND o.archived_at IS NULL FOR UPDATE");
             $query->execute([$stepId]);
-            $orderId = (int) ($query->fetchColumn() ?: 0);
+            $step = $query->fetch(PDO::FETCH_ASSOC);
+            $orderId = (int) ($step['order_id'] ?? 0);
             if ($orderId < 1) throw new RuntimeException('مرحله پیدا نشد.');
             $this->replaceDependencies($orderId, $stepId, $dependencyIds);
             $this->assertAcyclic($orderId);
             $this->repository->history($orderId, null, $actorId, 'step.dependencies_changed', 'پیش‌نیازهای مرحله تغییر کرد.', ['step_id' => $stepId, 'dependency_ids' => $this->ids($dependencyIds)]);
-            $this->activateReadySteps($orderId, $actorId);
+            if ($step['order_status'] === 'active') $this->activateReadySteps($orderId, $actorId);
             $pdo->commit();
         } catch (\Throwable $exception) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -335,17 +358,25 @@ final class WorkflowEngine
 
     public function reorderSteps(int $orderId, int $actorId, array $stepIds): void
     {
-        $ids = $this->ids($stepIds);
-        if ($ids === []) throw new RuntimeException('ترتیب مراحل خالی است.');
-        $steps = Table::name('order_workflow_steps');
-        $orders = Table::name('work_orders');
         $pdo = Connection::get();
-        $check = $pdo->prepare("SELECT 1 FROM {$orders} WHERE id=? AND deleted_at IS NULL AND archived_at IS NULL");
-        $check->execute([$orderId]);
-        if (!$check->fetchColumn()) throw new RuntimeException('پروژه پیدا نشد یا آرشیوشده و فقط خواندنی است.');
-        $statement = $pdo->prepare("UPDATE {$steps} SET position=? WHERE id=? AND order_id=?");
-        foreach ($ids as $index => $stepId) $statement->execute([($index + 1) * 10, $stepId, $orderId]);
-        $this->repository->history($orderId, null, $actorId, 'step.reordered', 'ترتیب مراحل تغییر کرد.', ['step_ids' => $ids]);
+        $pdo->beginTransaction();
+        try {
+            $steps = Table::name('order_workflow_steps');
+            $orders = Table::name('work_orders');
+            $check = $pdo->prepare("SELECT 1 FROM {$orders} WHERE id=? AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE");
+            $check->execute([$orderId]);
+            if (!$check->fetchColumn()) throw new RuntimeException('پروژه پیدا نشد یا آرشیوشده و فقط خواندنی است.');
+            $query = $pdo->prepare("SELECT id FROM {$steps} WHERE order_id=? ORDER BY position,id FOR UPDATE");
+            $query->execute([$orderId]);
+            $ids = WorkflowStructure::orderedIds($stepIds, $query->fetchAll(PDO::FETCH_COLUMN));
+            $statement = $pdo->prepare("UPDATE {$steps} SET position=? WHERE id=? AND order_id=?");
+            foreach ($ids as $index => $stepId) $statement->execute([($index + 1) * 10, $stepId, $orderId]);
+            $this->repository->history($orderId, null, $actorId, 'step.reordered', 'ترتیب مراحل تغییر کرد.', ['step_ids' => $ids]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
     }
 
     private function activateReadySteps(int $orderId, int $actorId): void

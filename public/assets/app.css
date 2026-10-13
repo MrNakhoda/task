@@ -1082,3 +1082,13 @@ body:has(.tf-app) { overflow-x: hidden; background: #f4f6fa; }
     .tf-template-guide-list, .tf-template-guide-upload { grid-template-columns: 1fr; }
     .tf-template-guide-upload .tf-button { width: 100%; }
 }
+
+/* Stage ordering controls support drag and keyboard/touch buttons. */
+.tf-sort-controls { display: inline-flex; align-items: center; gap: 4px; }
+.tf-sort-controls button { border: 1px solid #d6dce8; border-radius: 6px; background: transparent; color: inherit; padding: 4px 8px; min-height: 30px; cursor: pointer; }
+.tf-sort-controls .tf-stage-drag { cursor: grab; font-size: 20px; touch-action: none; }
+.tf-sort-controls button:focus-visible { outline: 2px solid #3157d5; outline-offset: 2px; }
+[data-sort-step].is-dragging { opacity: .45; }
+[data-stage-sort].is-saving-order { pointer-events: none; opacity: .65; }
+.tf-sort-hint { color: #64748b; font-size: 12px; padding: 12px 0; }
+.tf-stage > header { flex-wrap: wrap; gap: 6px; }
