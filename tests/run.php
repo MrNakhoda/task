@@ -445,6 +445,18 @@ $test('dangerous test-data wipe is absent from production workspace', static fun
     }
 });
 
+$test('workflow stage order requires an exact nonduplicated set', static function () use ($assert): void {
+    $assert(\App\Modules\Workflow\WorkflowStructure::orderedIds(['3', 1, 2], [1, 2, 3]) === [3, 1, 2]);
+    foreach ([[1, 2], [1, 2, 2], [1, 2, 4], [1, 2, 3, 4], [], [1, 2, '3x'], [1, 2, 3.5], [1, 2, -3]] as $bad) {
+        try {
+            \App\Modules\Workflow\WorkflowStructure::orderedIds($bad, [1, 2, 3]);
+            throw new LogicException('Invalid order accepted');
+        } catch (RuntimeException $exception) {
+            $assert(!$exception instanceof LogicException);
+        }
+    }
+});
+
 $failures = 0;
 foreach ($tests as $name => $callback) {
     try {

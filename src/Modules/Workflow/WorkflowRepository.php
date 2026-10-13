@@ -1158,6 +1158,137 @@ final class WorkflowRepository
         if ($statement->rowCount() < 1) throw new RuntimeException('مشتری پیدا نشد.');
     }
 
+    public function cloneWorkflowTemplate(int $templateId, string $name, int $actorId): int
+    {
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $templates = Table::name('workflow_templates');
+            $query = $pdo->prepare("SELECT * FROM {$templates} WHERE id=? AND deleted_at IS NULL FOR UPDATE");
+            $query->execute([$templateId]);
+            $source = $query->fetch(PDO::FETCH_ASSOC);
+            if (!$source) throw new RuntimeException('قالب پیدا نشد.');
+            $newId = $this->createTemplate($name, $source['description'], $actorId);
+            $steps = Table::name('workflow_template_steps');
+            $query = $pdo->prepare("SELECT * FROM {$steps} WHERE workflow_template_id=? ORDER BY position,id FOR UPDATE");
+            $query->execute([$templateId]);
+            $insert = $pdo->prepare("INSERT INTO {$steps} (workflow_template_id,task_type_id,name,description,position,progress_weight,is_active) VALUES (?,?,?,?,?,?,?)");
+            $map = [];
+            foreach ($query->fetchAll(PDO::FETCH_ASSOC) as $step) {
+                $insert->execute([$newId, $step['task_type_id'], $step['name'], $step['description'], $step['position'], $step['progress_weight'], $step['is_active']]);
+                $map[(int) $step['id']] = (int) $pdo->lastInsertId();
+            }
+            $this->copyStepRelations($map, 'workflow_template_step_dependencies');
+            foreach (['users' => 'user_id', 'teams' => 'team_id', 'roles' => 'role_id'] as $suffix => $column) {
+                $table = Table::name('workflow_template_step_' . $suffix);
+                $copy = $pdo->prepare("INSERT INTO {$table} (step_id,{$column}) SELECT ?,{$column} FROM {$table} WHERE step_id=?");
+                foreach ($map as $old => $new) $copy->execute([$new, $old]);
+            }
+            $attachments = Table::name('workflow_template_attachments');
+            $files = Table::name('files');
+            $pdo->prepare("INSERT INTO {$attachments} (workflow_template_id,file_id,title,sort_order,uploaded_by) SELECT ?,a.file_id,a.title,a.sort_order,? FROM {$attachments} a JOIN {$files} f ON f.id=a.file_id WHERE a.workflow_template_id=? AND a.deleted_at IS NULL AND f.deleted_at IS NULL")->execute([$newId, $actorId, $templateId]);
+            (new AuditLogger())->record($actorId, 'template.cloned', 'workflow_template', (string) $newId, ['source_template_id' => $templateId]);
+            $pdo->commit();
+            return $newId;
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function cloneWorkflowProject(int $sourceId, string $name, int $actorId): int
+    {
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $orders = Table::name('work_orders');
+            $projects = Table::name('projects');
+            $query = $pdo->prepare("SELECT * FROM {$orders} WHERE id=? AND project_id IS NOT NULL AND deleted_at IS NULL FOR UPDATE");
+            $query->execute([$sourceId]);
+            $source = $query->fetch(PDO::FETCH_ASSOC);
+            if (!$source) throw new RuntimeException('پروژه پیدا نشد.');
+            $code = 'PRJ-' . date('ymd') . '-' . strtoupper(bin2hex(random_bytes(4)));
+            $name = $this->required($name, 'نام پروژه');
+            $details = json_decode((string) ($source['details_json'] ?? '{}'), true) ?: [];
+            $description = (string) ($details['description'] ?? '');
+            $pdo->prepare("INSERT INTO {$projects} (name,code,description,created_by) VALUES (?,?,?,?)")->execute([$name, $code, $description, $actorId]);
+            $containerId = (int) $pdo->lastInsertId();
+            $pdo->prepare("INSERT INTO {$orders} (order_number,title,project_id,workflow_template_id,priority_id,details_json,created_by) VALUES (?,?,?,?,?,?,?)")->execute([$code, $name, $containerId, $source['workflow_template_id'], $source['priority_id'], $source['details_json'], $actorId]);
+            $newId = (int) $pdo->lastInsertId();
+            $customers = Table::name('order_customers');
+            $pdo->prepare("INSERT INTO {$customers} (order_id,customer_id,weight,weight_unit,notes) SELECT ?,customer_id,weight,weight_unit,notes FROM {$customers} WHERE order_id=?")->execute([$newId, $sourceId]);
+            $members = Table::name('project_members');
+            $users = Table::name('users');
+            $pdo->prepare("INSERT INTO {$members} (project_id,user_id,role_label) SELECT ?,pm.user_id,pm.role_label FROM {$members} pm JOIN {$users} u ON u.id=pm.user_id WHERE pm.project_id=? AND u.status='active'")->execute([$containerId, $source['project_id']]);
+            $steps = Table::name('order_workflow_steps');
+            $query = $pdo->prepare("SELECT * FROM {$steps} WHERE order_id=? AND status<>'disabled' ORDER BY position,id FOR UPDATE");
+            $query->execute([$sourceId]);
+            $insert = $pdo->prepare("INSERT INTO {$steps} (order_id,source_template_step_id,task_type_id,name,description,position,progress_weight) VALUES (?,?,?,?,?,?,?)");
+            $map = [];
+            $candidates = Table::name('order_step_candidate_assignees');
+            $assignees = Table::name('task_assignees');
+            $tasks = Table::name('tasks');
+            $copyCandidates = $pdo->prepare("INSERT IGNORE INTO {$candidates} (step_id,user_id) SELECT ?,c.user_id FROM {$candidates} c JOIN {$users} u ON u.id=c.user_id WHERE c.step_id=? AND u.status='active'");
+            $copyAssignees = $pdo->prepare("INSERT IGNORE INTO {$candidates} (step_id,user_id) SELECT ?,a.user_id FROM {$assignees} a JOIN {$tasks} t ON t.id=a.task_id JOIN {$users} u ON u.id=a.user_id WHERE t.order_step_id=? AND u.status='active'");
+            $count = $pdo->prepare("SELECT COUNT(*) FROM {$candidates} WHERE step_id=?");
+            foreach ($query->fetchAll(PDO::FETCH_ASSOC) as $step) {
+                $insert->execute([$newId, $step['source_template_step_id'], $step['task_type_id'], $step['name'], $step['description'], $step['position'], $step['progress_weight']]);
+                $newStep = (int) $pdo->lastInsertId();
+                $map[(int) $step['id']] = $newStep;
+                $copyAssignees->execute([$newStep, $step['id']]);
+                $count->execute([$newStep]);
+                if ((int) $count->fetchColumn() === 0) $copyCandidates->execute([$newStep, $step['id']]);
+            }
+            $this->copyStepRelations($map, 'order_step_dependencies');
+            $guides = Table::name('order_template_attachments');
+            $files = Table::name('files');
+            $pdo->prepare("INSERT INTO {$guides} (order_id,source_template_attachment_id,file_id,title,sort_order) SELECT ?,a.source_template_attachment_id,a.file_id,a.title,a.sort_order FROM {$guides} a JOIN {$files} f ON f.id=a.file_id WHERE a.order_id=? AND f.deleted_at IS NULL")->execute([$newId, $sourceId]);
+            $this->history($newId, null, $actorId, 'project.cloned', 'نسخه خام پروژه ساخته شد.', ['source_project_id' => $sourceId]);
+            $pdo->commit();
+            return $newId;
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    private function copyStepRelations(array $map, string $relationName): void
+    {
+        $table = Table::name($relationName);
+        $query = Connection::get()->prepare("SELECT depends_on_step_id FROM {$table} WHERE step_id=?");
+        $insert = Connection::get()->prepare("INSERT INTO {$table} (step_id,depends_on_step_id) VALUES (?,?)");
+        foreach ($map as $old => $new) {
+            $query->execute([$old]);
+            foreach ($query->fetchAll(PDO::FETCH_COLUMN) as $parent) {
+                if (isset($map[(int) $parent])) $insert->execute([$new, $map[(int) $parent]]);
+            }
+        }
+    }
+
+    public function reorderTemplateSteps(int $templateId, int $actorId, array $stepIds): void
+    {
+        $pdo = Connection::get();
+        $pdo->beginTransaction();
+        try {
+            $templates = Table::name('workflow_templates');
+            $steps = Table::name('workflow_template_steps');
+            $query = $pdo->prepare("SELECT id FROM {$templates} WHERE id=? AND deleted_at IS NULL FOR UPDATE");
+            $query->execute([$templateId]);
+            if (!$query->fetchColumn()) throw new RuntimeException('قالب پیدا نشد.');
+            $query = $pdo->prepare("SELECT id FROM {$steps} WHERE workflow_template_id=? ORDER BY position,id FOR UPDATE");
+            $query->execute([$templateId]);
+            $ids = WorkflowStructure::orderedIds($stepIds, $query->fetchAll(PDO::FETCH_COLUMN));
+            $update = $pdo->prepare("UPDATE {$steps} SET position=? WHERE id=? AND workflow_template_id=?");
+            foreach ($ids as $index => $id) $update->execute([($index + 1) * 10, $id, $templateId]);
+            $pdo->prepare("UPDATE {$templates} SET version=version+1 WHERE id=?")->execute([$templateId]);
+            (new AuditLogger())->record($actorId, 'template.steps_reordered', 'workflow_template', (string) $templateId, ['step_ids' => $ids]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
     public function createTemplate(string $name, ?string $description, int $actorId): int
     {
         $table = Table::name('workflow_templates');
@@ -1312,6 +1443,17 @@ final class WorkflowRepository
             $positionQuery = $pdo->prepare("SELECT COALESCE(MAX(position),0)+10 FROM {$steps} WHERE workflow_template_id=?");
             $positionQuery->execute([$templateId]);
             $position = (int) $positionQuery->fetchColumn();
+            $anchorId = (int) ($data['anchor_step_id'] ?? 0);
+            $placement = (string) ($data['placement'] ?? 'end');
+            if (in_array($placement, ['before', 'after'], true)) {
+                $anchor = $pdo->prepare("SELECT position FROM {$steps} WHERE id=? AND workflow_template_id=?");
+                $anchor->execute([$anchorId, $templateId]);
+                $anchorPosition = $anchor->fetchColumn();
+                if ($anchorPosition === false) throw new RuntimeException('مرحله مرجع معتبر نیست.');
+                $position = (int) $anchorPosition + ($placement === 'after' ? 1 : 0);
+                $pdo->prepare("UPDATE {$steps} SET position=position+1 WHERE workflow_template_id=? AND position>=?")->execute([$templateId, $position]);
+            }
+
             $statement = $pdo->prepare("INSERT INTO {$steps} (workflow_template_id,task_type_id,name,description,position,progress_weight) VALUES (?,?,?,?,?,?)");
             $statement->execute([$templateId, (int) ($data['task_type_id'] ?? 0), $this->required((string) ($data['name'] ?? ''), 'نام مرحله'), $data['description'] ?? null, $position, 1]);
             $stepId = (int) $pdo->lastInsertId();

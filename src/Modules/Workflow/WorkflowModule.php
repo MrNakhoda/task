@@ -200,6 +200,12 @@ final class WorkflowModule implements Module
         }), [$authenticated]);
         $router->get('/api/v1/workflow/notifications', $endpoint(static fn () => ['notifications' => $repository->notifications($actor())]), [$authenticated]);
 
+        $router->post('/api/v1/workflow/templates/{id}/clone', $endpoint(static fn (Request $request, array $params) => ['id' => $repository->cloneWorkflowTemplate((int) ($params['id'] ?? 0), (string) $request->input('name', ''), $actor())], 201), [$authenticated, $csrf, $permission('templates.manage')]);
+        $router->post('/api/v1/workflow/projects/{id}/clone', $endpoint(static fn (Request $request, array $params) => ['id' => $repository->cloneWorkflowProject((int) ($params['id'] ?? 0), (string) $request->input('name', ''), $actor())], 201), [$authenticated, $csrf, $permission('orders.manage')]);
+        $router->post('/api/v1/workflow/templates/{id}/steps/reorder', $endpoint(static function (Request $request, array $params) use ($repository, $actor): array {
+            $repository->reorderTemplateSteps((int) ($params['id'] ?? 0), $actor(), (array) $request->input('step_ids', []));
+            return [];
+        }), [$authenticated, $csrf, $permission('templates.manage')]);
         $router->post('/api/v1/workflow/templates', $endpoint(static fn (Request $request) => ['id' => $repository->createTemplate((string) $request->input('name', ''), $request->input('description'), $actor())], 201), [$authenticated, $csrf, $permission('templates.manage')]);
         $router->post('/api/v1/workflow/templates/{id}', $endpoint(static function (Request $request, array $params) use ($repository): array {
             $repository->updateTemplate((int) ($params['id'] ?? 0), $request->all());

@@ -490,12 +490,12 @@
         const archived = Boolean(project.archived_at);
         const stageNames = Object.fromEntries((project.steps || []).map(stage => [Number(stage.id), stage.name]));
         const customers = (project.customers || []).map(customer => `${customer.name}${customer.weight ? ` · ${customer.weight} ${customer.weight_unit}` : ''}`).join('، ');
-        const actions = state.capabilities.projects_manage ? `${archived ? `<button class="tf-button" data-project-restore="${Number(project.id)}">بازگردانی از آرشیو</button>` : `${project.status === 'draft' ? `<button class="tf-button" data-project-activate="${Number(project.id)}">شروع پروژه و ساخت تسک‌ها</button>` : ''}${project.status === 'active' ? `<button class="tf-button secondary" data-open-project-stage="${Number(project.id)}">+ مرحله جدید</button>` : ''}${project.status === 'completed' ? `<button class="tf-button secondary" data-project-archive="${Number(project.id)}">آرشیو پروژه</button>` : ''}<button class="tf-button secondary" data-edit-project="${Number(project.id)}">ویرایش پروژه</button>`}` : '';
+        const actions = state.capabilities.projects_manage ? `${archived ? `<button class="tf-button secondary" data-clone-project="${Number(project.id)}">کپی خام پروژه</button><button class="tf-button" data-project-restore="${Number(project.id)}">بازگردانی از آرشیو</button>` : `${project.status === 'draft' ? `<button class="tf-button" data-project-activate="${Number(project.id)}">شروع پروژه و ساخت تسک‌ها</button>` : ''}${project.status === 'active' ? `<button class="tf-button secondary" data-open-project-stage="${Number(project.id)}">+ مرحله جدید</button>` : ''}${project.status === 'completed' ? `<button class="tf-button secondary" data-project-archive="${Number(project.id)}">آرشیو پروژه</button>` : ''}<button class="tf-button secondary" data-clone-project="${Number(project.id)}">کپی خام پروژه</button><button class="tf-button secondary" data-edit-project="${Number(project.id)}">ویرایش پروژه</button>`}` : '';
         target.innerHTML = `<header class="tf-project-hero"><div><div class="tf-project-kicker">${esc(project.order_number)} · ${esc(project.priority_name || 'اولویت عادی')}</div><h1>${esc(project.title)}</h1><p>${esc(customers || projectDescription(project) || 'بدون مشتری')}</p></div><div class="tf-project-score"><strong>${Number(project.progress_percent).toLocaleString('fa-IR')}٪</strong><span>پیشرفت پروژه</span></div></header>
             <div class="tf-project-toolbar">${archived ? '<span class="tf-status status-disabled">آرشیوشده</span>' : statusBadge(project.status)}${actions}${state.capabilities.system_admin ? `<button class="tf-button danger push" data-delete-project="${Number(project.id)}">حذف پروژه</button>` : ''}</div>
             <section class="tf-card tf-members"><div class="tf-card-head"><div><h2>۱. اعضای پروژه</h2><p>${project.status === 'draft' ? 'هنگام شروع پروژه، اعضای تیم‌های مسئول مراحل به‌صورت خودکار اضافه می‌شوند.' : 'این فهرست هنگام شروع از تیم‌های مسئول قالب ساخته شده و مبنای دسترسی پروژه است.'}</p></div></div><div class="tf-member-pills">${(project.members || []).map(member => `<span><i>${esc(String(member.name).slice(0, 1))}</i>${esc(member.name)}<small>${esc(member.role_label || '')}</small>${state.capabilities.projects_manage && !archived ? `<button title="حذف عضو" data-remove-project-member="${Number(member.id)}">×</button>` : ''}</span>`).join('') || '<em>اعضا پس از شروع پروژه خودکار اضافه می‌شوند.</em>'}</div>${state.capabilities.projects_manage && !archived ? `<form data-project-member="${Number(project.id)}" class="tf-inline-form"><select name="user_id" required>${(state.reference.users || []).filter(user => user.status === 'active').map(user => `<option value="${Number(user.id)}">${esc(user.name)}</option>`).join('')}</select><input name="role_label" placeholder="عضو تکمیلی؛ اختیاری"><button class="tf-button tiny">افزودن عضو تکمیلی</button></form>` : ''}</section>
             <section class="tf-card tf-template-guides"><div class="tf-card-head"><div><h2>۲. راهنمای انجام پروژه</h2><p>نسخه ثابت فایل‌های راهنمای قالب در زمان شروع پروژه</p></div></div><div class="tf-template-guide-list">${(project.template_attachments || []).map(item => templateGuideCard(item, true)).join('') || `<div class="tf-empty small">${project.status === 'draft' ? 'فایل‌های راهنما پس از شروع پروژه اینجا ثبت می‌شوند.' : 'این قالب فایل راهنمایی نداشته است.'}</div>`}</div></section>
-            <section class="tf-card tf-stages"><div class="tf-card-head"><div><h2>۳. مراحل و پیش‌نیازها</h2><p>وظیفه خودت را بدون خروج از پروژه شروع، گزارش یا تکمیل کن.</p></div></div><div class="tf-stage-flow">${(project.steps || []).map((stage, index) => { const dependencies = String(stage.dependency_ids || '').split(',').filter(Boolean).map(id => stageNames[Number(id)] || `#${id}`); return `<article class="tf-stage status-${esc(stage.status)}"><header><span>${(index + 1).toLocaleString('fa-IR')}</span>${statusBadge(stage.status)}</header><h3>${esc(stage.name)}</h3><p>${esc(stage.task_type_name)}</p><div class="tf-dependency">${dependencies.length ? `پیش‌نیاز: ${esc(dependencies.join('، '))}` : 'بدون پیش‌نیاز؛ شروع هم‌زمان'}</div>${stage.task_id ? `<div class="tf-stage-task"><strong>${esc(stage.assignee_names || 'بدون مسئول')}</strong>${statusBadge(stage.task_status)}</div><div class="tf-stage-work-actions">${stageTaskActions(stage, archived)}</div>` : '<div class="tf-stage-task muted">تسک هنوز ساخته نشده</div>'}${state.capabilities.projects_manage && !archived && !['completed', 'disabled'].includes(stage.status) ? `<div class="tf-stage-actions"><button data-edit-project-dependencies="${Number(stage.id)}">ویرایش پیش‌نیاز</button><button class="danger-text" data-disable-project-stage="${Number(stage.id)}">غیرفعال‌کردن</button></div>` : ''}</article>`; }).join('') || '<div class="tf-empty span-all"><strong>مرحله‌ها پس از شروع پروژه ساخته می‌شوند</strong><p>قبل از شروع، قالب و تیم‌های مسئول مراحل را بررسی کن.</p></div>'}</div></section>
+            <section class="tf-card tf-stages"><div class="tf-card-head"><div><h2>۳. مراحل و پیش‌نیازها</h2><p>برای تغییر ترتیب، دستگیره مرحله را بکش یا از دکمه‌های بالا و پایین استفاده کن. پیش‌نیازهای اجرا جداگانه تنظیم می‌شوند.</p></div></div><div class="tf-stage-flow" ${state.capabilities.projects_manage && !archived ? `data-stage-sort="project" data-container-id="${Number(project.id)}"` : ''}>${(project.steps || []).map((stage, index) => { const dependencies = String(stage.dependency_ids || '').split(',').filter(Boolean).map(id => stageNames[Number(id)] || `#${id}`); return `<article data-sort-step="${Number(stage.id)}" class="tf-stage status-${esc(stage.status)}"><header><span>${(index + 1).toLocaleString('fa-IR')}</span>${statusBadge(stage.status)}${state.capabilities.projects_manage && !archived ? stageSortControls() : ''}</header><h3>${esc(stage.name)}</h3><p>${esc(stage.task_type_name)}</p><div class="tf-dependency">${dependencies.length ? `پیش‌نیاز: ${esc(dependencies.join('، '))}` : 'بدون پیش‌نیاز؛ شروع هم‌زمان'}</div>${stage.task_id ? `<div class="tf-stage-task"><strong>${esc(stage.assignee_names || 'بدون مسئول')}</strong>${statusBadge(stage.task_status)}</div><div class="tf-stage-work-actions">${stageTaskActions(stage, archived)}</div>` : '<div class="tf-stage-task muted">تسک هنوز ساخته نشده</div>'}${state.capabilities.projects_manage && !archived && !['completed', 'disabled'].includes(stage.status) ? `<div class="tf-stage-actions"><button data-edit-project-dependencies="${Number(stage.id)}">ویرایش پیش‌نیاز</button><button class="danger-text" data-disable-project-stage="${Number(stage.id)}">غیرفعال‌کردن</button></div>` : ''}</article>`; }).join('') || '<div class="tf-empty span-all"><strong>مرحله‌ها پس از شروع پروژه ساخته می‌شوند</strong><p>قبل از شروع، قالب و تیم‌های مسئول مراحل را بررسی کن.</p></div>'}</div></section>
             <section class="tf-card tf-attachments"><div class="tf-card-head"><div><h2>۴. تصاویر و پیوست‌ها</h2><p>تصاویر مربوط به همین پروژه</p></div></div><div class="tf-attachment-grid">${(project.attachments || []).map(item => `<a href="${esc(fileUrl(item.path))}" target="_blank"><img src="${esc(fileUrl(item.path))}" alt="${esc(item.caption || item.original_name || 'پیوست پروژه')}"><span>${esc(item.caption || item.original_name || 'تصویر')}</span></a>`).join('') || '<div class="tf-empty small">هنوز تصویری اضافه نشده است.</div>'}</div>${state.capabilities.projects_manage && !archived ? `<form class="tf-inline-form tf-upload" data-project-attachment="${Number(project.id)}" enctype="multipart/form-data"><input type="file" name="image" accept="image/jpeg,image/png,image/webp" required><input name="caption" placeholder="توضیح تصویر؛ اختیاری"><button class="tf-button tiny">آپلود تصویر</button></form>` : ''}</section>
             <section class="tf-card"><div class="tf-card-head"><div><h2>۵. تاریخچه پروژه</h2><p>چه کاری، توسط چه کسی و چه زمانی انجام شده است.</p></div></div><div class="tf-timeline">${(project.history || []).map(item => `<article><i></i><div><strong>${esc(item.message)}</strong><small>${esc(item.actor_name || 'سیستم')} · ${esc(item.created_at)}</small></div></article>`).join('') || '<div class="tf-empty small">رویدادی ثبت نشده.</div>'}</div></section>`;
     }
@@ -568,7 +568,7 @@
         const editor = root.querySelector('[data-template-editor]');
         const names = Object.fromEntries((template.steps || []).map(step => [Number(step.id), step.name]));
         const manage = state.capabilities.templates_manage;
-        editor.innerHTML = `<header class="tf-editor-head"><div><span>قالب گردش‌کار</span><h2>${esc(template.name)}</h2><p>${esc(template.description || 'بدون توضیحات')}</p></div><div class="tf-head-actions">${manage ? `<button class="tf-button secondary" data-edit-template="${Number(template.id)}">ویرایش مشخصات</button><button class="tf-button" data-open-template-stage="${Number(template.id)}">+ مرحله</button>` : ''}${state.capabilities.system_admin ? `<button class="tf-button danger" data-delete-template="${Number(template.id)}">حذف قالب</button>` : ''}</div></header><section class="tf-template-guides"><div class="tf-card-head"><div><h3>فایل‌های راهنمای قالب</h3><p>PDF یا تصویر؛ نسخه فعلی هنگام شروع پروژه برای آن پروژه ثابت می‌شود.</p></div></div><div class="tf-template-guide-list">${(template.attachments || []).map(item => templateGuideCard(item, false, manage)).join('') || '<div class="tf-empty small">هنوز فایل راهنمایی اضافه نشده است.</div>'}</div>${manage ? `<form class="tf-template-guide-upload" data-template-attachment="${Number(template.id)}" enctype="multipart/form-data"><label>فایل راهنما<input type="file" name="attachment" accept="application/pdf,image/jpeg,image/png,image/webp" required></label><label>عنوان نمایشی<input name="title" maxlength="190" placeholder="مثلاً دستورالعمل کنترل کیفیت"></label><button class="tf-button tiny">افزودن فایل</button><small>حداکثر ۲۵ مگابایت؛ PDF، JPG، PNG یا WEBP</small></form>` : ''}</section><div class="tf-template-stages">${(template.steps || []).map((step, index) => `<article class="${Number(step.is_active) ? '' : 'is-disabled'}"><span>${(index + 1).toLocaleString('fa-IR')}</span><div><h3>${esc(step.name)} ${Number(step.is_active) ? '' : '· غیرفعال'}</h3><p>${esc(step.task_type_name)}</p><small>${(step.dependencies || []).length ? `بعد از: ${step.dependencies.map(id => esc(names[Number(id)] || `#${id}`)).join('، ')}` : 'بدون پیش‌نیاز؛ هم‌زمان با شروع پروژه'}</small><small>تیم مسئول: ${esc(assignmentLabel(step))}</small>${manage ? `<div class="tf-stage-actions"><button data-edit-template-stage="${Number(step.id)}">ویرایش</button>${Number(step.is_active) ? `<button class="danger-text" data-disable-template-stage="${Number(step.id)}">غیرفعال‌کردن</button>` : ''}<button class="danger-text" data-delete-template-stage="${Number(step.id)}">حذف از قالب</button></div>` : ''}</div></article>`).join('') || '<div class="tf-empty"><strong>قالب هنوز مرحله‌ای ندارد</strong><p>اولین مرحله را اضافه کن.</p></div>'}</div>`;
+        editor.innerHTML = `<header class="tf-editor-head"><div><span>قالب گردش‌کار</span><h2>${esc(template.name)}</h2><p>${esc(template.description || 'بدون توضیحات')}</p></div><div class="tf-head-actions">${manage ? `<button class="tf-button secondary" data-clone-template="${Number(template.id)}">کپی خام قالب</button><button class="tf-button secondary" data-edit-template="${Number(template.id)}">ویرایش مشخصات</button><button class="tf-button" data-open-template-stage="${Number(template.id)}">+ مرحله</button>` : ''}${state.capabilities.system_admin ? `<button class="tf-button danger" data-delete-template="${Number(template.id)}">حذف قالب</button>` : ''}</div></header><section class="tf-template-guides"><div class="tf-card-head"><div><h3>فایل‌های راهنمای قالب</h3><p>PDF یا تصویر؛ نسخه فعلی هنگام شروع پروژه برای آن پروژه ثابت می‌شود.</p></div></div><div class="tf-template-guide-list">${(template.attachments || []).map(item => templateGuideCard(item, false, manage)).join('') || '<div class="tf-empty small">هنوز فایل راهنمایی اضافه نشده است.</div>'}</div>${manage ? `<form class="tf-template-guide-upload" data-template-attachment="${Number(template.id)}" enctype="multipart/form-data"><label>فایل راهنما<input type="file" name="attachment" accept="application/pdf,image/jpeg,image/png,image/webp" required></label><label>عنوان نمایشی<input name="title" maxlength="190" placeholder="مثلاً دستورالعمل کنترل کیفیت"></label><button class="tf-button tiny">افزودن فایل</button><small>حداکثر ۲۵ مگابایت؛ PDF، JPG، PNG یا WEBP</small></form>` : ''}</section><p class="tf-sort-hint">برای تغییر ترتیب، دستگیره مرحله را بکش یا از دکمه‌های بالا و پایین استفاده کن. پیش‌نیازهای اجرا جداگانه تنظیم می‌شوند.</p><div class="tf-template-stages" ${manage ? `data-stage-sort="template" data-container-id="${Number(template.id)}"` : ''}>${(template.steps || []).map((step, index) => `<article data-sort-step="${Number(step.id)}" class="${Number(step.is_active) ? '' : 'is-disabled'}"><span>${(index + 1).toLocaleString('fa-IR')}</span><div><h3>${esc(step.name)} ${Number(step.is_active) ? '' : '· غیرفعال'}</h3><p>${esc(step.task_type_name)}</p><small>${(step.dependencies || []).length ? `بعد از: ${step.dependencies.map(id => esc(names[Number(id)] || `#${id}`)).join('، ')}` : 'بدون پیش‌نیاز؛ هم‌زمان با شروع پروژه'}</small><small>تیم مسئول: ${esc(assignmentLabel(step))}</small>${manage ? `<div class="tf-stage-actions">${stageSortControls()}<button data-edit-template-stage="${Number(step.id)}">ویرایش</button>${Number(step.is_active) ? `<button class="danger-text" data-disable-template-stage="${Number(step.id)}">غیرفعال‌کردن</button>` : ''}<button class="danger-text" data-delete-template-stage="${Number(step.id)}">حذف از قالب</button></div>` : ''}</div></article>`).join('') || '<div class="tf-empty"><strong>قالب هنوز مرحله‌ای ندارد</strong><p>اولین مرحله را اضافه کن.</p></div>'}</div>`;
     }
 
     async function selectTemplate(templateId, { force = false } = {}) {
@@ -732,9 +732,91 @@
         root.querySelector('[data-stage-modal-title]').textContent = step ? 'ویرایش مرحله قالب' : 'افزودن مرحله به قالب';
         root.querySelector('[data-stage-template-name]').textContent = template.name;
         root.querySelector('[data-stage-dependencies]').innerHTML = (template.steps || []).filter(item => Number(item.id) !== Number(step?.id) && Number(item.is_active)).map(item => `<option value="${Number(item.id)}">${esc(item.name)}</option>`).join('');
+        prepareStagePlacement(form, template.steps || [], Boolean(step));
         if (step) setForm(form, { ...step, step_id: step.id, dependency_ids: step.dependencies, team_id: numericIds(step.team_ids)[0] || '' });
         openModal('stage');
     }
+
+    function prepareStagePlacement(form, steps, editing = false) {
+        const row = form.querySelector('[data-stage-placement]');
+        row.hidden = editing;
+        form.elements.placement.disabled = editing;
+        form.elements.anchor_step_id.disabled = editing;
+        form.elements.placement.value = 'end';
+        form.elements.anchor_step_id.innerHTML = '<option value="">انتخاب مرحله مرجع</option>' + steps.map(step => `<option value="${Number(step.id)}">${esc(step.name)}</option>`).join('');
+        form.elements.anchor_step_id.required = false;
+        form.elements.anchor_step_id.hidden = true;
+    }
+
+    function stageSortControls() {
+        return '<span class="tf-sort-controls"><button type="button" class="tf-stage-drag" draggable="true" aria-label="کشیدن برای تغییر ترتیب" title="برای جابه‌جایی بکش">⠿</button><button type="button" data-stage-move="up" aria-label="انتقال مرحله به بالا">↑</button><button type="button" data-stage-move="down" aria-label="انتقال مرحله به پایین">↓</button></span>';
+    }
+
+    let stageDrag = null;
+    let stageSortBusy = false;
+    async function saveStageOrder(list, original) {
+        const ids = Array.from(list.children).filter(item => item.hasAttribute('data-sort-step')).map(item => Number(item.dataset.sortStep));
+        if (ids.every((id, index) => id === original[index])) return;
+        stageSortBusy = true;
+        list.classList.add('is-saving-order');
+        const kind = list.dataset.stageSort;
+        const id = list.dataset.containerId;
+        try {
+            await api(`${kind === 'template' ? 'templates' : 'orders'}/${id}/steps/reorder`, { method: 'POST', body: { step_ids: ids } });
+            if (kind === 'template') await loadTemplates();
+            else await showProject(id);
+            toast('ترتیب مراحل ذخیره شد.');
+        } catch (error) {
+            original.forEach(stepId => {
+                const item = list.querySelector(`[data-sort-step="${stepId}"]`);
+                if (item) list.append(item);
+            });
+            toast(error.message, 'error');
+        } finally {
+            stageSortBusy = false;
+            list.classList.remove('is-saving-order');
+        }
+    }
+
+    root.addEventListener('dragstart', event => {
+        const handle = event.target.closest('.tf-stage-drag');
+        const item = handle?.closest('[data-sort-step]');
+        const list = item?.closest('[data-stage-sort]');
+        if (!handle) return;
+        if (!list || stageSortBusy) { event.preventDefault(); return; }
+        stageDrag = { item, list, original: Array.from(list.children).map(child => Number(child.dataset.sortStep)) };
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', item.dataset.sortStep);
+        event.dataTransfer.setDragImage(item, 20, 20);
+        item.classList.add('is-dragging');
+    });
+    root.addEventListener('dragover', event => {
+        const item = event.target.closest('[data-sort-step]');
+        if (!stageDrag || !item || item.parentElement !== stageDrag.list) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        if (item === stageDrag.item) return;
+        const rect = item.getBoundingClientRect();
+        const project = stageDrag.list.dataset.stageSort === 'project';
+        const sameRow = project && Math.abs(rect.top - stageDrag.item.getBoundingClientRect().top) < rect.height / 2;
+        const after = sameRow ? (getComputedStyle(stageDrag.list).direction === 'rtl' ? event.clientX < rect.left + rect.width / 2 : event.clientX > rect.left + rect.width / 2) : event.clientY > rect.top + rect.height / 2;
+        stageDrag.list.insertBefore(stageDrag.item, after ? item.nextSibling : item);
+    });
+    root.addEventListener('drop', event => {
+        if (!stageDrag || !stageDrag.list.contains(event.target)) return;
+        event.preventDefault();
+        const { item, list, original } = stageDrag;
+        stageDrag = null;
+        item.classList.remove('is-dragging');
+        void saveStageOrder(list, original);
+    });
+    root.addEventListener('dragend', () => {
+        if (!stageDrag) return;
+        const { item, list, original } = stageDrag;
+        item.classList.remove('is-dragging');
+        original.forEach(id => list.append(list.querySelector(`[data-sort-step="${id}"]`)));
+        stageDrag = null;
+    });
 
     async function refreshAll() {
         await loadReference();
@@ -763,6 +845,35 @@
         if (event.target.closest('[data-open-user]')) { const form = root.querySelector('[data-create-user]'); resetModalForm(form); renderRoleOptions(form); openModal('user'); return; }
         if (event.target.closest('[data-open-role]')) { prepareRole(); return; }
 
+        const moveStage = event.target.closest('[data-stage-move]');
+        if (moveStage) {
+            if (stageSortBusy) return;
+            const item = moveStage.closest('[data-sort-step]');
+            const list = item.closest('[data-stage-sort]');
+            const original = Array.from(list.children).map(child => Number(child.dataset.sortStep));
+            const neighbor = moveStage.dataset.stageMove === 'up' ? item.previousElementSibling : item.nextElementSibling;
+            if (!neighbor) return;
+            list.insertBefore(item, moveStage.dataset.stageMove === 'up' ? neighbor : neighbor.nextSibling);
+            await saveStageOrder(list, original);
+            return;
+        }
+        const clone = event.target.closest('[data-clone-project],[data-clone-template]');
+        if (clone) {
+            const template = Boolean(clone.dataset.cloneTemplate);
+            const source = template ? state.selectedTemplate : state.selectedProject;
+            const name = await window.AppModal.prompt(template ? 'مراحل، پیش‌نیازها، تیم‌های مسئول و فایل‌های راهنما در قالب جدید کپی می‌شوند.' : 'مشخصات و مراحل در پروژه جدید کپی می‌شوند؛ پیشرفت، گزارش‌ها، تصاویر اجرایی و موعدها از نو شروع می‌شوند.', { title: template ? 'کپی خام قالب' : 'کپی خام پروژه', inputLabel: 'نام نسخه جدید', required: true, value: `${source.name || source.title} (کپی)`, placeholder: `${source.name || source.title} (کپی)`, confirmText: 'ساخت نسخه خام' });
+            if (name === null) return;
+            clone.disabled = true;
+            try {
+                const payload = await api(`${template ? 'templates' : 'projects'}/${source.id}/clone`, { method: 'POST', body: { name } });
+                await Promise.all([loadReference(), loadProjects(), loadOverview(), ...(state.capabilities.templates_manage ? [loadTemplates()] : [])]);
+                if (template) { state.templateQuery = ''; state.templateStatus = 'all'; renderTemplates(); await selectTemplate(payload.id, { force: true }); }
+                else await showProject(payload.id);
+                toast('نسخه خام ساخته شد.');
+            } catch (error) { toast(error.message, 'error'); }
+            finally { clone.disabled = false; }
+            return;
+        }
         const projectLink = event.target.closest('[data-project-open]');
         if (projectLink) { await showProject(projectLink.dataset.projectOpen).catch(error => toast(error.message, 'error')); return; }
         const taskLink = event.target.closest('[data-task-open]');
@@ -856,6 +967,7 @@
         const addProjectStage = event.target.closest('[data-open-project-stage]');
         if (addProjectStage) {
             const form = root.querySelector('[data-save-stage]'); resetModalForm(form); fillOptions(form);
+            prepareStagePlacement(form, state.selectedProject.steps || []);
             form.dataset.mode = 'project-create'; form.elements.template_id.value = addProjectStage.dataset.openProjectStage;
             root.querySelector('[data-template-targets]').hidden = true;
             root.querySelector('[data-project-targets]').hidden = false;
@@ -1042,6 +1154,15 @@
             toast('عملیات با موفقیت انجام شد.');
         } catch (error) { toast(error.message, 'error'); }
         finally { action.disabled = false; }
+    });
+
+    root.addEventListener('change', event => {
+        if (event.target.name !== 'placement') return;
+        const form = event.target.closest('[data-save-stage]');
+        if (!form) return;
+        const anchored = event.target.value !== 'end';
+        form.elements.anchor_step_id.hidden = !anchored;
+        form.elements.anchor_step_id.required = anchored;
     });
 
     root.addEventListener('change', async event => {

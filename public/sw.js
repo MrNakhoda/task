@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_VERSION = 'taskflow-static-v1';
+const CACHE_VERSION = 'taskflow-static-v2';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE = [
     OFFLINE_URL,
